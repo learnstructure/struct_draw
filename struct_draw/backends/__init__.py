@@ -155,11 +155,11 @@ def _render_dxf(data: Any) -> DrawingResult:
         column.elevation_view(msp, data, origin=(0.0, y_offset))
         metadata["views"] = ["section", "elevation"]
     elif isinstance(data, StaircaseData):
-        staircase.plan_view(msp, data)
-        staircase_margin = 1000.0 if is_metric else 50.0
-        y_offset = -(data.flight_length_in + staircase_margin)
-        staircase.section_view(msp, data, origin=(0.0, y_offset))
-        metadata["views"] = ["plan", "section"]
+        staircase.section_view(msp, data)
+        staircase_margin = 1500.0 if is_metric else 60.0
+        y_offset = -(data.flight_width_in * 2.5 + staircase_margin)
+        staircase.plan_view(msp, data, origin=(0.0, y_offset))
+        metadata["views"] = ["section", "plan"]
     elif isinstance(data, SlabData):
         slab.plan_view(msp, data)
         slab_margin = 1000.0 if is_metric else 50.0

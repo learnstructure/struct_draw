@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 from struct_draw.core.composite import (
+    draw_beam_section,
     draw_break_line,
     draw_dimension,
     draw_hatch,
@@ -33,16 +34,25 @@ from struct_draw.core.composite import (
     draw_polyline,
     draw_rebar_circle,
     draw_section_cut_symbol,
+    draw_stirrup_hooked,
     draw_text,
 )
 from struct_draw.core.data import FootingData, Rebar
 from struct_draw.core.primitives import draw_rectangle
 
 
+def _clean_text(txt: str) -> str:
+    """Replace non-rendering unicode symbols with standard CAD text."""
+    if not txt:
+        return ""
+    return txt.replace("φ", "mm dia").replace("Φ", "mm dia").replace("ϕ", "mm dia")
+
+
 def _format_rebar_size(bar_dia_in: float, is_metric: bool = False) -> str:
     """Format rebar size/diameter string."""
     if is_metric or bar_dia_in >= 6.0:
-        return f"{int(bar_dia_in)}φ" if bar_dia_in.is_integer() else f"{bar_dia_in:.1f}φ"
+        val_str = f"{int(bar_dia_in)}" if bar_dia_in.is_integer() else f"{bar_dia_in:.1f}"
+        return f"{val_str}mm dia"
     bar_map = {
         0.375: "#3",
         0.5: "#4",
@@ -58,7 +68,7 @@ def _format_rebar_size(bar_dia_in: float, is_metric: bool = False) -> str:
         if abs(bar_dia_in - val) < 0.05:
             return size
     if bar_dia_in.is_integer():
-        return f"{int(bar_dia_in)}φ"
+        return f"{int(bar_dia_in)}mm dia"
     return f'{bar_dia_in:.2f}"'
 
 
@@ -154,7 +164,7 @@ def section_view(
             layer="HATCH",
         )
 
-    # 3. Brick Soling Layer
+    # 3. Soling Layer (Brick or Stone)
     if soling_thick > 0:
         sol_pts = [
             (-L / 2.0 + ox, -pcc_thick + oy),
@@ -163,11 +173,15 @@ def section_view(
             (L / 2.0 + ox, -pcc_thick + oy),
         ]
         draw_polyline(target, sol_pts, close=True, layer="Foundation")
+        sol_mat = getattr(footing, "soling_material", "brick").lower()
+        is_stone = sol_mat == "stone"
+        sol_pattern = "GRAVEL" if is_stone else "ANSI32"
+        sol_scale = (15.0 if is_metric else 0.6) if is_stone else (100.0 if is_metric else 4.0)
         draw_hatch(
             target,
             paths=[{"type": "polyline", "points": sol_pts, "is_closed": True}],
-            pattern="ANSI32",
-            scale=100.0 if is_metric else 4.0,
+            pattern=sol_pattern,
+            scale=sol_scale,
             layer="HATCH",
         )
 
@@ -280,35 +294,25 @@ def section_view(
             draw_line(target, (col_left_bar_x, sy), (col_right_bar_x, sy), layer="Stirrup")
 
     # 8. Beam Cross-Section Blocks
-    def _draw_beam(center_x: float, top_y: float, bw: float, bh: float) -> None:
-        if bw <= 0 or bh <= 0:
-            return
-        # Outer box
-        b_pts = [
-            (center_x - bw / 2.0, top_y),
-            (center_x + bw / 2.0, top_y),
-            (center_x + bw / 2.0, top_y - bh),
-            (center_x - bw / 2.0, top_y - bh),
-        ]
-        draw_polyline(target, b_pts, close=True, layer="Beam")
-        # Stirrup inner box
-        st_off = 25.0 if is_metric else 1.0
-        s_pts = [
-            (center_x - bw / 2.0 + st_off, top_y - st_off),
-            (center_x + bw / 2.0 - st_off, top_y - st_off),
-            (center_x + bw / 2.0 - st_off, top_y - bh + st_off),
-            (center_x - bw / 2.0 + st_off, top_y - bh + st_off),
-        ]
-        draw_polyline(target, s_pts, close=True, layer="Stirrup")
-        # Rebar dots
-        b_dot = 5.0 if is_metric else 0.25
-        for cx in (center_x - bw / 2.0 + st_off + b_dot, center_x, center_x + bw / 2.0 - st_off - b_dot):
-            for cy in (top_y - st_off - b_dot, top_y - bh + st_off + b_dot):
-                draw_rebar_circle(target, (cx, cy), diameter=b_dot * 2.0, layer="Rebar_hatch")
+    if pb_w > 0 and pb_h > 0:
+        draw_beam_section(
+            target,
+            center_x=ox,
+            top_y=fd + pl + oy,
+            width=pb_w,
+            height=pb_h,
+            is_metric=is_metric,
+        )
 
-    # Draw Plinth Beam and Foundation Beam
-    _draw_beam(ox, fd + pl + oy, pb_w, pb_h)
-    _draw_beam(ox, t_mid + fb_h + oy, fb_w, fb_h)
+    if fb_w > 0 and fb_h > 0:
+        draw_beam_section(
+            target,
+            center_x=ox,
+            top_y=t_mid + fb_h + oy,
+            width=fb_w,
+            height=fb_h,
+            is_metric=is_metric,
+        )
 
     # 9. Leaders / Callouts
     text_bar = f"{_format_rebar_size(bar_dia, is_metric)} @ {_format_dim(spacing, is_metric, include_unit=is_metric)} c/c \nbothways"
@@ -337,7 +341,8 @@ def section_view(
         layer="Text",
     )
 
-    st_dia_str = footing.column_stirrups.size if footing.column_stirrups.size else ("8φ" if is_metric else "#3")
+    st_dia_raw = footing.column_stirrups.size if footing.column_stirrups and footing.column_stirrups.size else ("8mm dia" if is_metric else "#3")
+    st_dia_str = _clean_text(st_dia_raw)
     text_ring = f"{st_dia_str} @ {_format_dim(st_sp, is_metric, include_unit=is_metric)} c/c \ncolumn stirrups"
     draw_leader(
         target,
@@ -397,6 +402,8 @@ def section_view(
     if soling_thick > 0:
         sol_y = -pcc_thick - soling_thick / 2.0 + oy
         sol_x = L / 3.0 + ox
+        sol_mat = getattr(footing, "soling_material", "brick").lower()
+        sol_label = "Flat stone soling" if sol_mat == "stone" else "One flat brick soling"
         draw_leader(
             target,
             [
@@ -404,7 +411,7 @@ def section_view(
                 (sol_x, -pcc_thick - soling_thick - (300.0 if is_metric else 12.0) + oy),
                 (sol_x + (300.0 if is_metric else 12.0), -pcc_thick - soling_thick - (300.0 if is_metric else 12.0) + oy),
             ],
-            text="One flat brick soling",
+            text=f"{_format_dim(soling_thick, is_metric, include_unit=True)} thick {sol_label}",
             text_height=st_sz,
             layer="Text",
         )

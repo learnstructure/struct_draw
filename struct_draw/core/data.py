@@ -212,6 +212,7 @@ class FootingData:
     ledge_in: float = 4.0
     pcc_thickness_in: float = 3.0
     soling_thickness_in: float = 3.0
+    soling_material: str = "brick"
     plinth_beam_width_in: float = 0.0
     plinth_beam_depth_in: float = 0.0
     foundation_beam_width_in: float = 0.0
@@ -243,6 +244,7 @@ class FootingData:
         ledge_mm: float = 100.0,
         pcc_thick_mm: float = 75.0,
         soling_thick_mm: float = 75.0,
+        soling_material: str = "brick",
         plinth_beam_w_mm: float = 230.0,
         plinth_beam_h_mm: float = 350.0,
         found_beam_w_mm: float = 230.0,
@@ -269,12 +271,13 @@ class FootingData:
             ledge_in=ledge_mm,
             pcc_thickness_in=pcc_thick_mm,
             soling_thickness_in=soling_thick_mm,
+            soling_material=soling_material,
             plinth_beam_width_in=plinth_beam_w_mm,
             plinth_beam_depth_in=plinth_beam_h_mm,
             foundation_beam_width_in=found_beam_w_mm,
             foundation_beam_depth_in=found_beam_h_mm,
             column_bars=column_bars,
-            column_stirrups=column_stirrups or Stirrup(size="8φ", spacing_in=100.0),
+            column_stirrups=column_stirrups or Stirrup(size="8mm dia", spacing_in=100.0),
         )
 
 
@@ -338,6 +341,7 @@ class CombinedFootingData:
     plinth_height_in: float = 24.0
     pcc_thickness_in: float = 3.0
     soling_thickness_in: float = 3.0
+    soling_material: str = "brick"
     cover_in: float = 2.0
     bar_dia_in: float = 0.5
     bar_spacing_in: float = 6.0
@@ -379,6 +383,7 @@ class CombinedFootingData:
         pl_height_mm: float = 600.0,
         pcc_thick_mm: float = 75.0,
         soling_thick_mm: float = 75.0,
+        soling_material: str = "brick",
         cover_mm: float = 50.0,
         bar_dia_mm: float = 12.0,
         bar_spacing_mm: float = 150.0,
@@ -408,6 +413,7 @@ class CombinedFootingData:
             plinth_height_in=pl_height_mm,
             pcc_thickness_in=pcc_thick_mm,
             soling_thickness_in=soling_thick_mm,
+            soling_material=soling_material,
             cover_in=cover_mm,
             bar_dia_in=bar_dia_mm,
             bar_spacing_in=bar_spacing_mm,
@@ -419,7 +425,7 @@ class CombinedFootingData:
             foundation_beam_depth_in=found_beam_h_mm,
             development_length_in=ld_mm,
             column_bars=column_bars,
-            column_stirrups=column_stirrups or Stirrup(size="8φ", spacing_in=100.0),
+            column_stirrups=column_stirrups or Stirrup(size="8mm dia", spacing_in=100.0),
         )
 
 
@@ -458,17 +464,35 @@ class StaircaseData:
     Attributes
     ----------
     name
-        Staircase identifier.
+        Staircase identifier (e.g. ``"ST1"``).
     flight_width_in
-        Width of one flight (inches).
+        Width of one flight (inches or mm).
     flight_length_in
-        Horizontal length of one flight (inches).
+        Horizontal length of flight (going length) (inches or mm).
     riser_height_in
-        Riser height (inches).
+        Riser height (inches or mm).
     tread_depth_in
-        Tread depth (inches).
+        Tread depth (inches or mm).
+    num_risers
+        Number of risers in the flight.
     slab_thickness_in
-        Waist slab thickness (inches).
+        Waist slab thickness (inches or mm).
+    cover_in
+        Clear cover to reinforcement (inches or mm).
+    bottom_landing_depth_in
+        Horizontal length of bottom landing from grid line 1 to 1st riser (inches or mm).
+    top_landing_depth_in
+        Horizontal length of top landing from last riser to grid line 2 (inches or mm).
+    beam_left_width_in / beam_left_depth_in
+        Width and depth of the left landing/main beam (inches or mm).
+    beam_right_width_in / beam_right_depth_in
+        Width and depth of the right landing/main beam (inches or mm).
+    main_bar_dia_in / main_bar_spacing_in
+        Main reinforcement bar diameter and center-to-center spacing (inches or mm).
+    dist_bar_dia_in / dist_bar_spacing_in
+        Distribution reinforcement bar diameter and center-to-center spacing (inches or mm).
+    nosing_bar_dia_in
+        Nosing bar diameter in steps (inches or mm).
     landings
         Number of intermediate landings.
     """
@@ -476,10 +500,82 @@ class StaircaseData:
     name: str = "ST1"
     flight_width_in: float = 48.0
     flight_length_in: float = 120.0
-    riser_height_in: float = 7.0
-    tread_depth_in: float = 11.0
-    slab_thickness_in: float = 6.0
+    riser_height_in: float = 6.0
+    tread_depth_in: float = 12.0
+    num_risers: int = 11
+    slab_thickness_in: float = 7.5
+    cover_in: float = 1.2
+    bottom_landing_depth_in: float = 60.0
+    top_landing_depth_in: float = 12.0
+    beam_left_width_in: float = 9.0
+    beam_left_depth_in: float = 14.0
+    beam_right_width_in: float = 14.0
+    beam_right_depth_in: float = 22.0
+    main_bar_dia_in: float = 0.5
+    main_bar_spacing_in: float = 5.0
+    dist_bar_dia_in: float = 0.375
+    dist_bar_spacing_in: float = 6.0
+    nosing_bar_dia_in: float = 0.3125
     landings: int = 1
+
+    @property
+    def is_metric(self) -> bool:
+        """True if dimensions are specified in SI metric units (mm)."""
+        return self.tread_depth_in >= 100.0 or self.flight_width_in >= 300.0 or self.slab_thickness_in >= 100.0
+
+    @property
+    def waist_thickness_in(self) -> float:
+        """Alias for slab_thickness_in."""
+        return self.slab_thickness_in
+
+    @classmethod
+    def from_metric(
+        cls,
+        *,
+        name: str = "ST1",
+        flight_width_mm: float = 1200.0,
+        riser_mm: float = 150.0,
+        tread_mm: float = 300.0,
+        num_risers: int = 12,
+        waist_mm: float = 190.0,
+        cover_mm: float = 30.0,
+        bottom_landing_mm: float = 1915.0,
+        top_landing_mm: float = 285.0,
+        beam_left_w_mm: float = 230.0,
+        beam_left_h_mm: float = 350.0,
+        beam_right_w_mm: float = 350.0,
+        beam_right_h_mm: float = 550.0,
+        main_bar_dia_mm: float = 12.0,
+        main_bar_spacing_mm: float = 125.0,
+        dist_bar_dia_mm: float = 10.0,
+        dist_bar_spacing_mm: float = 150.0,
+        nosing_bar_dia_mm: float = 8.0,
+        landings: int = 1,
+    ) -> StaircaseData:
+        """Construct StaircaseData directly from SI metric parameters (in mm)."""
+        going_mm = (num_risers - 1) * tread_mm
+        return cls(
+            name=name,
+            flight_width_in=flight_width_mm,
+            flight_length_in=going_mm,
+            riser_height_in=riser_mm,
+            tread_depth_in=tread_mm,
+            num_risers=num_risers,
+            slab_thickness_in=waist_mm,
+            cover_in=cover_mm,
+            bottom_landing_depth_in=bottom_landing_mm,
+            top_landing_depth_in=top_landing_mm,
+            beam_left_width_in=beam_left_w_mm,
+            beam_left_depth_in=beam_left_h_mm,
+            beam_right_width_in=beam_right_w_mm,
+            beam_right_depth_in=beam_right_h_mm,
+            main_bar_dia_in=main_bar_dia_mm,
+            main_bar_spacing_in=main_bar_spacing_mm,
+            dist_bar_dia_in=dist_bar_dia_mm,
+            dist_bar_spacing_in=dist_bar_spacing_mm,
+            nosing_bar_dia_in=nosing_bar_dia_mm,
+            landings=landings,
+        )
 
 
 @dataclass(frozen=True)

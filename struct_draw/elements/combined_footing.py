@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 from struct_draw.core.composite import (
+    draw_beam_section,
     draw_break_line,
     draw_dimension,
     draw_hatch,
@@ -33,16 +34,25 @@ from struct_draw.core.composite import (
     draw_line,
     draw_polyline,
     draw_rebar_circle,
+    draw_stirrup_hooked,
     draw_text,
 )
 from struct_draw.core.data import CombinedFootingData
 from struct_draw.core.primitives import draw_rectangle
 
 
+def _clean_text(txt: str) -> str:
+    """Replace non-rendering unicode symbols with standard CAD text."""
+    if not txt:
+        return ""
+    return txt.replace("φ", "mm dia").replace("Φ", "mm dia").replace("ϕ", "mm dia")
+
+
 def _format_rebar_size(bar_dia_in: float, is_metric: bool = False) -> str:
     """Format rebar size/diameter string."""
     if is_metric or bar_dia_in >= 6.0:
-        return f"{int(bar_dia_in)}φ" if bar_dia_in.is_integer() else f"{bar_dia_in:.1f}φ"
+        val_str = f"{int(bar_dia_in)}" if bar_dia_in.is_integer() else f"{bar_dia_in:.1f}"
+        return f"{val_str}mm dia"
     bar_map = {
         0.375: "#3",
         0.5: "#4",
@@ -58,7 +68,7 @@ def _format_rebar_size(bar_dia_in: float, is_metric: bool = False) -> str:
         if abs(bar_dia_in - val) < 0.05:
             return size
     if bar_dia_in.is_integer():
-        return f"{int(bar_dia_in)}φ"
+        return f"{int(bar_dia_in)}mm dia"
     return f'{bar_dia_in:.2f}"'
 
 
@@ -151,7 +161,7 @@ def section_view(
             layer="HATCH",
         )
 
-    # 3. Sub-base Brick Soling layer
+    # 3. Sub-base Soling layer (Brick or Stone)
     if soling_thick > 0:
         sol_pts = [
             (x_left, oy - pcc_thick),
@@ -160,11 +170,15 @@ def section_view(
             (x_left, oy - pcc_thick - soling_thick),
         ]
         draw_polyline(target, sol_pts, close=True, layer="Foundation")
+        sol_mat = getattr(combined_footing, "soling_material", "brick").lower()
+        is_stone = sol_mat == "stone"
+        sol_pattern = "GRAVEL" if is_stone else "ANSI32"
+        sol_scale = (15.0 if is_metric else 0.6) if is_stone else (100.0 if is_metric else 4.0)
         draw_hatch(
             target,
             paths=[{"type": "polyline", "points": sol_pts, "is_closed": True}],
-            pattern="ANSI32",
-            scale=100.0 if is_metric else 4.0,
+            pattern=sol_pattern,
+            scale=sol_scale,
             layer="HATCH",
         )
 
@@ -216,36 +230,24 @@ def section_view(
     # 6. Plinth Beams and Foundation Beams (if present)
     if pb_w > 0 and pb_h > 0:
         for cx in (cx1, cx2):
-            draw_rectangle(
+            draw_beam_section(
                 target,
-                origin=(cx - pb_w / 2.0, pl_y - pb_h),
+                center_x=cx,
+                top_y=pl_y,
                 width=pb_w,
                 height=pb_h,
-                layer="Beam",
-            )
-            draw_rectangle(
-                target,
-                origin=(cx - pb_w / 2.0 + 25 * s, pl_y - pb_h + 25 * s),
-                width=max(1.0 * s, pb_w - 50 * s),
-                height=max(1.0 * s, pb_h - 50 * s),
-                layer="Stirrup",
+                is_metric=is_metric,
             )
 
     if fb_w > 0 and fb_h > 0:
         for cx in (cx1, cx2):
-            draw_rectangle(
+            draw_beam_section(
                 target,
-                origin=(cx - fb_w / 2.0, thick + oy),
+                center_x=cx,
+                top_y=thick + oy + fb_h,
                 width=fb_w,
                 height=fb_h,
-                layer="Beam",
-            )
-            draw_rectangle(
-                target,
-                origin=(cx - fb_w / 2.0 + 25 * s, thick + oy + 25 * s),
-                width=max(1.0 * s, fb_w - 50 * s),
-                height=max(1.0 * s, fb_h - 50 * s),
-                layer="Stirrup",
+                is_metric=is_metric,
             )
 
     # 7. Reinforcement Steel
@@ -330,17 +332,19 @@ def section_view(
         draw_line(target, (col2_left + col_cover, sy), (col2_right - col_cover, sy), layer="Stirrup")
 
     # Ld bracket annotation at Column 1 right face
+    ld_end_x = col1_right - col_cover + hook_bend
     ld_poly_pts = [
-        (col1_right, thick + oy - (50.0 if is_metric else 2.0)),
-        (col1_right - (20.0 if is_metric else 1.0), thick + oy - (50.0 if is_metric else 2.0)),
-        (col1_right + (20.0 if is_metric else 1.0), thick + oy - (50.0 if is_metric else 2.0)),
-        (col1_right, thick + oy - (50.0 if is_metric else 2.0)),
+        (col1_right - (20.0 if is_metric else 1.0), thick + oy - (20.0 if is_metric else 1.0)),
+        (col1_right, thick + oy),
+        (col1_right + (20.0 if is_metric else 1.0), thick + oy - (20.0 if is_metric else 1.0)),
+        (col1_right, thick + oy - (20.0 if is_metric else 1.0)),
+        (col1_right, thick + oy),
         (col1_right, col_bar_y_bot + (45.0 if is_metric else 1.8)),
-        (col1_right + (50.0 if is_metric else 2.0), col_bar_y_bot + (45.0 if is_metric else 1.8)),
-        (col1_right + (50.0 if is_metric else 2.0), col_bar_y_bot + (25.0 if is_metric else 1.0)),
-        (col1_right, col_bar_y_bot + (45.0 if is_metric else 1.8)),
-        (col1_right + (50.0 if is_metric else 2.0), col_bar_y_bot + (65.0 if is_metric else 2.6)),
-        (col1_right + (50.0 if is_metric else 2.0), col_bar_y_bot + (45.0 if is_metric else 1.8)),
+        (ld_end_x - (20.0 if is_metric else 1.0), col_bar_y_bot + (45.0 if is_metric else 1.8)),
+        (ld_end_x - (20.0 if is_metric else 1.0), col_bar_y_bot + (25.0 if is_metric else 1.0)),
+        (ld_end_x, col_bar_y_bot + (45.0 if is_metric else 1.8)),
+        (ld_end_x - (20.0 if is_metric else 1.0), col_bar_y_bot + (65.0 if is_metric else 2.6)),
+        (ld_end_x - (20.0 if is_metric else 1.0), col_bar_y_bot + (45.0 if is_metric else 1.8)),
     ]
     draw_polyline(target, ld_poly_pts, close=False, layer="Dimension")
     draw_text(
@@ -388,27 +392,34 @@ def section_view(
         text_height=st_sz,
         layer="Text",
     )
+
+    sub_depth = pcc_thick + soling_thick
+    callout_x = x_left + (x_right - x_left) * 0.25
     if pcc_thick > 0:
-        pcc_txt = f"{_format_dim(pcc_thick, is_metric, include_unit=is_metric)} thick M10 PCC"
+        pcc_txt = f"{_format_dim(pcc_thick, is_metric, include_unit=True)} thick M10 PCC"
+        drop_pcc_y = oy - sub_depth - (120.0 if is_metric else 5.0)
         draw_leader(
             target,
             [
-                ((cx1 + cx2) / 2.0, oy - pcc_thick / 2.0),
-                ((cx1 + cx2) / 2.0 + 150.0 * s, oy - 200.0 * s),
-                ((cx1 + cx2) / 2.0 + 300.0 * s, oy - 200.0 * s),
+                (callout_x, oy - pcc_thick / 2.0),
+                (callout_x, drop_pcc_y),
+                (callout_x + (250.0 if is_metric else 10.0), drop_pcc_y),
             ],
             text=pcc_txt,
             text_height=st_sz,
             layer="Text",
         )
     if soling_thick > 0:
-        sol_txt = "One flat brick soling"
+        sol_mat = getattr(combined_footing, "soling_material", "brick").lower()
+        sol_label = "Flat stone soling" if sol_mat == "stone" else "One flat brick soling"
+        sol_txt = f"{_format_dim(soling_thick, is_metric, include_unit=True)} thick {sol_label}"
+        drop_sol_y = oy - sub_depth - (270.0 if is_metric else 11.0)
         draw_leader(
             target,
             [
-                ((cx1 + cx2) / 2.0, oy - pcc_thick - soling_thick / 2.0),
-                ((cx1 + cx2) / 2.0 + 150.0 * s, oy - 400.0 * s),
-                ((cx1 + cx2) / 2.0 + 300.0 * s, oy - 400.0 * s),
+                (callout_x, oy - pcc_thick - soling_thick / 2.0),
+                (callout_x, drop_sol_y),
+                (callout_x + (250.0 if is_metric else 10.0), drop_sol_y),
             ],
             text=sol_txt,
             text_height=st_sz,
@@ -416,7 +427,7 @@ def section_view(
         )
 
     # 9. Dimensions
-    dim_y = oy - (pcc_thick + soling_thick + 200.0 * s)
+    dim_y = oy - (sub_depth + (420.0 if is_metric else 17.0))
     draw_dimension(
         target,
         (x_left, dim_y),

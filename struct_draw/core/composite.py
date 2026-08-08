@@ -102,30 +102,112 @@ def draw_stirrup_hooked(
     width: float,
     height: float,
     origin: tuple[float, float] = (0.0, 0.0),
-    hook_length: float = 2.0,
+    hook_length: float = 3.0,
+    corner: str = "top_left",
     layer: str = "STIRRUP",
 ) -> list[Any]:
-    """Draw a stirrup with 135° hooks at the top two corners.
+    """Draw a stirrup with realistic parallel 135° hooks turning into the concrete core.
 
-    The hooks are drawn as short polylines extending inward and
-    upward from the top corners (the conventional ACI 318
-    seismic hook detail). Returned for snapshot-testing only.
+    The hooks extend at 135° inward from corner(s) into the beam/column core.
+    The two legs are drawn parallel to each other wrapping around the corner rebar.
     """
     x0, y0 = origin
     base = draw_stirrup(target, width=width, height=height, origin=origin, layer=layer)
     if base is None:
         return []
-    # Left-top hook: in by `hook_length` and up by `hook_length`.
     out = [base]
-    p1 = (x0, y0 + height)
-    p2 = (x0 + hook_length, y0 + height)
-    p3 = (x0 + hook_length, y0 + height + hook_length)
-    out.append(draw_polyline(target, [p1, p2, p3], close=False, layer=layer))
-    # Right-top hook
-    p1 = (x0 + width, y0 + height)
-    p2 = (x0 + width - hook_length, y0 + height)
-    p3 = (x0 + width - hook_length, y0 + height + hook_length)
-    out.append(draw_polyline(target, [p1, p2, p3], close=False, layer=layer))
+    dx = hook_length * 0.7071
+    dy = hook_length * 0.7071
+    gap = max(0.2, hook_length * 0.12)
+
+    if corner in ("top_left", "all", "top_both"):
+        p1_start = (x0, y0 + height)
+        p1_end = (x0 + dx, y0 + height - dy)
+        p2_start = (x0 + gap, y0 + height)
+        p2_end = (x0 + gap + dx, y0 + height - dy)
+        out.append(draw_line(target, p1_start, p1_end, layer=layer))
+        out.append(draw_line(target, p2_start, p2_end, layer=layer))
+
+    if corner in ("top_right", "all", "top_both"):
+        p1_start = (x0 + width, y0 + height)
+        p1_end = (x0 + width - dx, y0 + height - dy)
+        p2_start = (x0 + width - gap, y0 + height)
+        p2_end = (x0 + width - gap - dx, y0 + height - dy)
+        out.append(draw_line(target, p1_start, p1_end, layer=layer))
+        out.append(draw_line(target, p2_start, p2_end, layer=layer))
+
+    return out
+
+
+def draw_beam_section(
+    target: Any,
+    *,
+    center_x: float,
+    top_y: float,
+    width: float,
+    height: float,
+    is_metric: bool = True,
+    layer_beam: str = "Beam",
+    layer_stirrup: str = "Stirrup",
+    layer_rebar: str = "Rebar_hatch",
+) -> list[Any]:
+    """Draw a standard beam cross-section template with concrete outline, stirrup with parallel 135° seismic hooks, and longitudinal rebar circles.
+
+    Can be used consistently for plinth beams, foundation beams, grade beams, etc.
+    """
+    if width <= 0 or height <= 0:
+        return []
+
+    out: list[Any] = []
+
+    # 1. Outer concrete box
+    b_pts = [
+        (center_x - width / 2.0, top_y),
+        (center_x + width / 2.0, top_y),
+        (center_x + width / 2.0, top_y - height),
+        (center_x - width / 2.0, top_y - height),
+    ]
+    p_beam = draw_polyline(target, b_pts, close=True, layer=layer_beam)
+    if p_beam:
+        out.append(p_beam)
+
+    # 2. Stirrup inner box with parallel 135° hooks
+    st_off = 25.0 if is_metric else 1.0
+    sw = max(1.0, width - 2.0 * st_off)
+    sh = max(1.0, height - 2.0 * st_off)
+    sx0 = center_x - width / 2.0 + st_off
+    sy0 = top_y - height + st_off
+    hook_len = 75.0 if is_metric else 3.0
+
+    st_ents = draw_stirrup_hooked(
+        target,
+        width=sw,
+        height=sh,
+        origin=(sx0, sy0),
+        hook_length=hook_len,
+        corner="top_left",
+        layer=layer_stirrup,
+    )
+    if st_ents:
+        out.extend(st_ents)
+
+    # 3. Longitudinal rebar dots
+    b_dot = 5.0 if is_metric else 0.25
+    x_coords = (
+        center_x - width / 2.0 + st_off + b_dot,
+        center_x,
+        center_x + width / 2.0 - st_off - b_dot,
+    )
+    y_coords = (
+        top_y - st_off - b_dot,
+        top_y - height + st_off + b_dot,
+    )
+    for cx in x_coords:
+        for cy in y_coords:
+            c_ent = draw_rebar_circle(target, (cx, cy), diameter=b_dot * 2.0, layer=layer_rebar)
+            if c_ent:
+                out.append(c_ent)
+
     return out
 
 
@@ -339,6 +421,7 @@ __all__ = [
     "draw_concrete_outline",
     "draw_stirrup",
     "draw_stirrup_hooked",
+    "draw_beam_section",
     "draw_rebar_bar",
     "draw_rebar_circle",
     "draw_bar_mark",
