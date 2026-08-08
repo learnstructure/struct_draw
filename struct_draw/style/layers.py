@@ -109,6 +109,16 @@ def default_registry() -> LayerRegistry:
     reg.add(Layer("FOUNDATION",   color=105, linetype="Continuous", description="Foundation outline"))
     reg.add(Layer("COLUMN",       color=5,   linetype="Continuous", description="Column outline"))
     reg.add(Layer("BEAM",         color=10,  linetype="Continuous", description="Beam outline"))
+    reg.add(Layer("Foundation",   color=105, linetype="Continuous", description="Foundation outline"))
+    reg.add(Layer("Column",       color=5,   linetype="Continuous", description="Column outline"))
+    reg.add(Layer("Beam",         color=10,  linetype="Continuous", description="Beam outline"))
+    reg.add(Layer("Rebar",        color=2,   linetype="Continuous", description="Rebar outline"))
+    reg.add(Layer("Rebar_hatch",  color=2,   linetype="Continuous", lineweight=50, description="Rebar section hatch"))
+    reg.add(Layer("Dimension",    color=132, linetype="Continuous", description="Dimension lines"))
+    reg.add(Layer("Stirrup",      color=135, linetype="Continuous", description="Stirrups"))
+    reg.add(Layer("Text",         color=151, linetype="Continuous", description="Text and annotations"))
+    reg.add(Layer("Level",        color=8,   linetype="Continuous", description="Level lines"))
+    reg.add(Layer("CEN",          color=132, linetype="Center",     description="Centerlines"))
     return reg
 
 

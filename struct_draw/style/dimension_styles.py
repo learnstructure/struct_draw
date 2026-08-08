@@ -37,6 +37,8 @@ class DimensionStyle:
         Distance from the entity to the start of the extension line.
     extension_extension
         Distance the extension line extends past the dimension line.
+    fixed_extension_len
+        Fixed length for extension lines. If None, defaults to extension_extension.
     text_height
         Override for the text height.
     """
@@ -44,10 +46,11 @@ class DimensionStyle:
     name: str
     text_style: str = "Dimension"
     arrow_kind: ArrowheadKind = ArrowheadKind.FILLED_TRIANGLE
-    arrow_size: float = 0.10
-    extension_offset: float = 0.0625
-    extension_extension: float = 0.125
-    text_height: float | None = None
+    arrow_size: float = 50.0
+    extension_offset: float = 50.0
+    extension_extension: float = 50.0
+    fixed_extension_len: float | None = None
+    text_height: float | None = 100.0
 
 
 @dataclass
@@ -81,14 +84,19 @@ class DimensionStyleRegistry:
         return len(self.styles)
 
 
-def default_registry() -> DimensionStyleRegistry:
+def default_registry(is_metric: bool = True) -> DimensionStyleRegistry:
     """Return the package-default dimension-style registry."""
     reg = DimensionStyleRegistry()
-    reg.add(DimensionStyle("Linear",   text_style="Dimension", arrow_kind=ArrowheadKind.FILLED_TRIANGLE))
-    reg.add(DimensionStyle("Angular",  text_style="Dimension", arrow_kind=ArrowheadKind.FILLED_TRIANGLE))
-    reg.add(DimensionStyle("Radial",   text_style="Dimension", arrow_kind=ArrowheadKind.OPEN_ARROW))
-    reg.add(DimensionStyle("Leader",   text_style="Note",      arrow_kind=ArrowheadKind.NONE))
-    reg.add(DimensionStyle("Slope",    text_style="Dimension", arrow_kind=ArrowheadKind.SLASH))
+    th = 100.0 if is_metric else 4.0
+    asz = 50.0 if is_metric else 2.0
+    ext = 50.0 if is_metric else 2.0
+    fxl = 50.0 if is_metric else 2.0
+    reg.add(DimensionStyle("Linear",    text_style="Dimension", arrow_kind=ArrowheadKind.FILLED_TRIANGLE, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))
+    reg.add(DimensionStyle("Dimension", text_style="Dimension", arrow_kind=ArrowheadKind.FILLED_TRIANGLE, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))
+    reg.add(DimensionStyle("Angular",   text_style="Dimension", arrow_kind=ArrowheadKind.FILLED_TRIANGLE, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))
+    reg.add(DimensionStyle("Radial",    text_style="Dimension", arrow_kind=ArrowheadKind.OPEN_ARROW, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))
+    reg.add(DimensionStyle("Leader",    text_style="Note",      arrow_kind=ArrowheadKind.NONE, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))
+    reg.add(DimensionStyle("Slope",     text_style="Dimension", arrow_kind=ArrowheadKind.SLASH, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))
     return reg
 
 

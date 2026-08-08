@@ -18,13 +18,21 @@ from typing import Any
 from struct_draw.core.data import (
     BeamData,
     ColumnData,
+    CombinedFootingData,
     FootingData,
     MemberType,
     SlabData,
     StaircaseData,
 )
 from struct_draw.core.document import new_drawing, register_all_styles
-from struct_draw.elements import beam, column, footing, slab, staircase
+from struct_draw.elements import (
+    beam,
+    column,
+    combined_footing,
+    footing,
+    slab,
+    staircase,
+)
 from struct_draw.style import (
     default_blocks,
     default_dimension_styles,
@@ -104,36 +112,59 @@ def _render_dxf(data: Any) -> DrawingResult:
     3. Dispatches ``data`` to the matching element function based
        on its type.
     """
+    is_metric = False
+    if hasattr(data, "is_metric"):
+        is_metric = bool(data.is_metric)
+    elif hasattr(data, "length_in"):
+        is_metric = float(data.length_in) >= 300.0
+    elif hasattr(data, "section") and hasattr(data.section, "width_in"):
+        is_metric = float(data.section.width_in) >= 300.0
+
     doc = new_drawing()
     register_all_styles(
         doc,
         layers=default_layers(),
         linetypes=default_linetypes(),
         text_styles=default_text_styles(),
-        dimension_styles=default_dimension_styles(),
+        dimension_styles=default_dimension_styles(is_metric=is_metric),
         blocks=default_blocks(),
     )
 
-    metadata: dict[str, Any] = {"element": type(data).__name__}
+    metadata: dict[str, Any] = {"element": type(data).__name__, "is_metric": is_metric}
+
+    msp = doc.modelspace()
 
     if isinstance(data, BeamData):
-        beam.section_view(doc.modelspace(), data)
+        beam.section_view(msp, data)
         metadata["view"] = "section"
     elif isinstance(data, FootingData):
-        footing.section_view(doc.modelspace(), data)
-        footing.plan_view(doc, data, origin=(0.0, -footing.bar_off_y(data) - 80.0))
+        footing.section_view(msp, data)
+        footing_margin = 800.0 if is_metric else 35.0
+        y_offset = -(data.footing_depth_in + data.plinth_height_in + data.width_in / 2.0 + footing_margin)
+        footing.plan_view(msp, data, origin=(0.0, y_offset))
+        metadata["views"] = ["section", "plan"]
+    elif isinstance(data, CombinedFootingData):
+        combined_footing.section_view(msp, data)
+        cf_margin = 800.0 if is_metric else 35.0
+        y_offset = -(data.footing_depth_in + data.plinth_height_in + data.width_in / 2.0 + cf_margin)
+        combined_footing.plan_view(msp, data, origin=(0.0, y_offset))
         metadata["views"] = ["section", "plan"]
     elif isinstance(data, ColumnData):
-        column.section_view(doc.modelspace(), data)
-        column.elevation_view(doc, data, origin=(0.0, -100.0))
+        column.section_view(msp, data)
+        y_offset = -2500.0 if is_metric else -100.0
+        column.elevation_view(msp, data, origin=(0.0, y_offset))
         metadata["views"] = ["section", "elevation"]
     elif isinstance(data, StaircaseData):
-        staircase.plan_view(doc.modelspace(), data)
-        staircase.section_view(doc, data, origin=(0.0, -data.flight_length_in - 50.0))
+        staircase.plan_view(msp, data)
+        staircase_margin = 1000.0 if is_metric else 50.0
+        y_offset = -(data.flight_length_in + staircase_margin)
+        staircase.section_view(msp, data, origin=(0.0, y_offset))
         metadata["views"] = ["plan", "section"]
     elif isinstance(data, SlabData):
-        slab.plan_view(doc.modelspace(), data)
-        slab.section_view(doc, data, origin=(0.0, -data.width_in - 50.0))
+        slab.plan_view(msp, data)
+        slab_margin = 1000.0 if is_metric else 50.0
+        y_offset = -(data.width_in + slab_margin)
+        slab.section_view(msp, data, origin=(0.0, y_offset))
         metadata["views"] = ["plan", "section"]
     else:
         raise BackendError(

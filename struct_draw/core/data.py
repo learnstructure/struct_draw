@@ -209,6 +209,218 @@ class FootingData:
     column_bars: Sequence[Rebar] = field(default_factory=tuple)
     column_stirrups: Stirrup = field(default_factory=Stirrup)
     development_length_in: float = 24.0
+    ledge_in: float = 4.0
+    pcc_thickness_in: float = 3.0
+    soling_thickness_in: float = 3.0
+    plinth_beam_width_in: float = 0.0
+    plinth_beam_depth_in: float = 0.0
+    foundation_beam_width_in: float = 0.0
+    foundation_beam_depth_in: float = 0.0
+
+    @property
+    def is_metric(self) -> bool:
+        """True if the footing dimensions are specified in SI metric units (mm)."""
+        return self.length_in >= 300.0
+
+    @classmethod
+    def from_metric(
+        cls,
+        *,
+        name: str = "F2",
+        length_mm: float = 1600.0,
+        width_mm: float = 1600.0,
+        mid_thick_mm: float = 400.0,
+        edge_thick_mm: float = 200.0,
+        col_width_mm: float = 350.0,
+        col_depth_mm: float = 350.0,
+        col_height_mm: float = 2100.0,
+        fd_depth_mm: float = 1500.0,
+        pl_height_mm: float = 600.0,
+        cover_mm: float = 75.0,
+        bar_dia_mm: float = 12.0,
+        bar_spacing_mm: float = 150.0,
+        ld_mm: float = 600.0,
+        ledge_mm: float = 100.0,
+        pcc_thick_mm: float = 75.0,
+        soling_thick_mm: float = 75.0,
+        plinth_beam_w_mm: float = 230.0,
+        plinth_beam_h_mm: float = 350.0,
+        found_beam_w_mm: float = 230.0,
+        found_beam_h_mm: float = 300.0,
+        column_bars: Sequence[Rebar] = (),
+        column_stirrups: Stirrup | None = None,
+    ) -> FootingData:
+        """Construct FootingData directly from SI metric parameters (in mm)."""
+        return cls(
+            name=name,
+            length_in=length_mm,
+            width_in=width_mm,
+            mid_thickness_in=mid_thick_mm,
+            edge_thickness_in=edge_thick_mm,
+            column_width_in=col_width_mm,
+            column_depth_in=col_depth_mm,
+            column_height_in=col_height_mm,
+            footing_depth_in=fd_depth_mm,
+            plinth_height_in=pl_height_mm,
+            cover_in=cover_mm,
+            bar_dia_in=bar_dia_mm,
+            bar_spacing_in=bar_spacing_mm,
+            development_length_in=ld_mm,
+            ledge_in=ledge_mm,
+            pcc_thickness_in=pcc_thick_mm,
+            soling_thickness_in=soling_thick_mm,
+            plinth_beam_width_in=plinth_beam_w_mm,
+            plinth_beam_depth_in=plinth_beam_h_mm,
+            foundation_beam_width_in=found_beam_w_mm,
+            foundation_beam_depth_in=found_beam_h_mm,
+            column_bars=column_bars,
+            column_stirrups=column_stirrups or Stirrup(size="8φ", spacing_in=100.0),
+        )
+
+
+@dataclass(frozen=True)
+class CombinedFootingData:
+    """All information needed to draw a combined footing (section + plan).
+
+    A combined footing supports two columns on a single concrete pad.
+
+    Attributes
+    ----------
+    name
+        Footing identifier (e.g. ``"CF1"``).
+    proj_left_in / proj_right_in
+        Cantilever projections on the left of Col 1 center and right of Col 2 center (inches).
+    col_spacing_in
+        Center-to-center spacing between Column 1 and Column 2 (inches).
+    width_in
+        Footing pad width (inches).
+    thickness_in
+        Footing slab thickness (inches).
+    col1_width_in / col1_depth_in
+        Column 1 dimensions (inches).
+    col2_width_in / col2_depth_in
+        Column 2 dimensions (inches).
+    footing_depth_in
+        Depth of foundation below ground level (inches).
+    plinth_height_in
+        Plinth height above ground level (inches).
+    cover_in
+        Clear cover to reinforcement (inches).
+    bar_dia_in / bar_spacing_in
+        Bottom main rebar diameter and spacing (inches).
+    top_bar_dia_in / top_bar_spacing_in
+        Top main rebar diameter and spacing (inches).
+    plinth_beam_width_in / plinth_beam_depth_in
+        Plinth beam cross-section dimensions (inches).
+    foundation_beam_width_in / foundation_beam_depth_in
+        Foundation beam cross-section dimensions (inches).
+    column_bars
+        Sequence of :class:`Rebar` for column longitudinal steel.
+    column_stirrups
+        :class:`Stirrup` description for column ties.
+    development_length_in
+        Development length ``Ld`` shown for rebar anchorage.
+    pcc_thickness_in / soling_thickness_in
+        Sub-base layer thicknesses (inches).
+    """
+
+    name: str = "CF1"
+    proj_left_in: float = 60.0
+    proj_right_in: float = 48.0
+    col_spacing_in: float = 32.0
+    width_in: float = 64.0
+    thickness_in: float = 16.0
+    col1_width_in: float = 14.0
+    col1_depth_in: float = 14.0
+    col2_width_in: float = 14.0
+    col2_depth_in: float = 14.0
+    footing_depth_in: float = 60.0
+    plinth_height_in: float = 24.0
+    pcc_thickness_in: float = 3.0
+    soling_thickness_in: float = 3.0
+    cover_in: float = 2.0
+    bar_dia_in: float = 0.5
+    bar_spacing_in: float = 6.0
+    top_bar_dia_in: float | None = None
+    top_bar_spacing_in: float | None = None
+    plinth_beam_width_in: float = 0.0
+    plinth_beam_depth_in: float = 0.0
+    foundation_beam_width_in: float = 0.0
+    foundation_beam_depth_in: float = 0.0
+    column_bars: Sequence[Rebar] = field(default_factory=tuple)
+    column_stirrups: Stirrup = field(default_factory=Stirrup)
+    development_length_in: float = 24.0
+
+    @property
+    def total_length_in(self) -> float:
+        """Total length of the combined footing pad."""
+        return self.proj_left_in + self.col_spacing_in + self.proj_right_in
+
+    @property
+    def is_metric(self) -> bool:
+        """True if dimensions are specified in SI metric units (mm)."""
+        return self.total_length_in >= 300.0
+
+    @classmethod
+    def from_metric(
+        cls,
+        *,
+        name: str = "CF2",
+        proj_left_mm: float = 1500.0,
+        proj_right_mm: float = 1200.0,
+        col_spacing_mm: float = 800.0,
+        width_mm: float = 1600.0,
+        thickness_mm: float = 400.0,
+        col1_width_mm: float = 350.0,
+        col1_depth_mm: float = 350.0,
+        col2_width_mm: float = 350.0,
+        col2_depth_mm: float = 350.0,
+        fd_depth_mm: float = 1500.0,
+        pl_height_mm: float = 600.0,
+        pcc_thick_mm: float = 75.0,
+        soling_thick_mm: float = 75.0,
+        cover_mm: float = 50.0,
+        bar_dia_mm: float = 12.0,
+        bar_spacing_mm: float = 150.0,
+        top_bar_dia_mm: float | None = None,
+        top_bar_spacing_mm: float | None = None,
+        plinth_beam_w_mm: float = 230.0,
+        plinth_beam_h_mm: float = 350.0,
+        found_beam_w_mm: float = 230.0,
+        found_beam_h_mm: float = 300.0,
+        ld_mm: float = 600.0,
+        column_bars: Sequence[Rebar] = (),
+        column_stirrups: Stirrup | None = None,
+    ) -> CombinedFootingData:
+        """Construct CombinedFootingData directly from SI metric parameters (in mm)."""
+        return cls(
+            name=name,
+            proj_left_in=proj_left_mm,
+            proj_right_in=proj_right_mm,
+            col_spacing_in=col_spacing_mm,
+            width_in=width_mm,
+            thickness_in=thickness_mm,
+            col1_width_in=col1_width_mm,
+            col1_depth_in=col1_depth_mm,
+            col2_width_in=col2_width_mm,
+            col2_depth_in=col2_depth_mm,
+            footing_depth_in=fd_depth_mm,
+            plinth_height_in=pl_height_mm,
+            pcc_thickness_in=pcc_thick_mm,
+            soling_thickness_in=soling_thick_mm,
+            cover_in=cover_mm,
+            bar_dia_in=bar_dia_mm,
+            bar_spacing_in=bar_spacing_mm,
+            top_bar_dia_in=top_bar_dia_mm,
+            top_bar_spacing_in=top_bar_spacing_mm,
+            plinth_beam_width_in=plinth_beam_w_mm,
+            plinth_beam_depth_in=plinth_beam_h_mm,
+            foundation_beam_width_in=found_beam_w_mm,
+            foundation_beam_depth_in=found_beam_h_mm,
+            development_length_in=ld_mm,
+            column_bars=column_bars,
+            column_stirrups=column_stirrups or Stirrup(size="8φ", spacing_in=100.0),
+        )
 
 
 @dataclass(frozen=True)
@@ -307,6 +519,7 @@ class MemberType(str, Enum):
 
     BEAM = "beam"
     FOOTING = "footing"
+    COMBINED_FOOTING = "combined_footing"
     COLUMN = "column"
     STAIRCASE = "staircase"
     SLAB = "slab"
@@ -320,6 +533,7 @@ __all__ = [
     "GeometrySection",
     "BeamData",
     "FootingData",
+    "CombinedFootingData",
     "ColumnData",
     "StaircaseData",
     "SlabData",

@@ -37,10 +37,10 @@ def test_beam_data_defaults() -> None:
     assert bd.name == "B1"
     assert bd.top_bars == ()
     assert bd.bottom_bars == ()
-    assert bd.stirrups is None
+    assert bd.stirrups == Stirrup()
     assert bd.schedule == ()
-    assert bd.length_in == 0.0
-    assert bd.section is None
+    assert bd.length_in == 240.0
+    assert bd.section == GeometrySection()
 
 
 def test_rebar_required_fields() -> None:

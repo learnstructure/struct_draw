@@ -17,6 +17,7 @@ from struct_draw.backends import save_dxf  # noqa: E402
 from struct_draw.core.data import (  # noqa: E402
     BeamData,
     ColumnData,
+    CombinedFootingData,
     FootingData,
     GeometrySection,
     SlabData,
@@ -53,6 +54,24 @@ def _footing() -> FootingData:
     )
 
 
+def _combined_footing_imperial() -> CombinedFootingData:
+    return CombinedFootingData(
+        name="CF1",
+        proj_left_in=60.0,
+        proj_right_in=48.0,
+        col_spacing_in=36.0,
+    )
+
+
+def _combined_footing_si() -> CombinedFootingData:
+    return CombinedFootingData.from_metric(
+        name="CF2",
+        proj_left_mm=1500.0,
+        proj_right_mm=1200.0,
+        col_spacing_mm=800.0,
+    )
+
+
 def _slab() -> SlabData:
     return SlabData(name="S1", width_in=120.0, length_in=240.0, thickness_in=8.0)
 
@@ -76,10 +95,20 @@ def _stair() -> StaircaseData:
         _beam(),
         _column(),
         _footing(),
+        _combined_footing_imperial(),
+        _combined_footing_si(),
         _slab(),
         _stair(),
     ],
-    ids=["beam", "column", "footing", "slab", "stair"],
+    ids=[
+        "beam",
+        "column",
+        "footing",
+        "combined_footing_imperial",
+        "combined_footing_si",
+        "slab",
+        "stair",
+    ],
 )
 def test_save_dxf_writes_valid_file(tmp_path: Path, data) -> None:
     out_path = tmp_path / "out.dxf"

@@ -19,6 +19,21 @@ imports from above.
 """
 
 from struct_draw.core import data, document, primitives, composite, sheet, viewport, geometry  # noqa: F401
+from struct_draw.core.data import (
+    BeamData,
+    ColumnData,
+    FootingData,
+    GeometrySection,
+    MemberType,
+    Rebar,
+    ScheduleRow,
+    SlabData,
+    StaircaseData,
+    Stirrup,
+)
+from struct_draw.core.document import Document
+from struct_draw.core.sheet import PaperSize, Sheet, SheetSet
+from struct_draw.core.viewport import ViewKind, Viewport, ViewportLayout
 
 __all__ = [
     "data",
@@ -28,4 +43,21 @@ __all__ = [
     "sheet",
     "viewport",
     "geometry",
+    "BeamData",
+    "ColumnData",
+    "FootingData",
+    "GeometrySection",
+    "MemberType",
+    "Rebar",
+    "ScheduleRow",
+    "SlabData",
+    "StaircaseData",
+    "Stirrup",
+    "Document",
+    "PaperSize",
+    "Sheet",
+    "SheetSet",
+    "ViewKind",
+    "Viewport",
+    "ViewportLayout",
 ]

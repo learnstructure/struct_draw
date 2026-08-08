@@ -24,6 +24,7 @@ from struct_draw.core.data import Rebar, Stirrup
 from struct_draw.core.primitives import (
     draw_circle,
     draw_dim_linear,
+    draw_hatch,
     draw_leader,
     draw_line,
     draw_polyline,
@@ -322,24 +323,16 @@ def draw_dimension(
     dimstyle: str = "Linear",
     layer: str = "DIM_LINEAR",
 ) -> Any:
-    """Draw a linear dimension with an optional text override.
-
-    A common high-quality drawing pattern: dimension a rebar
-    segment, then override the numeric value with a bar call-out
-    like ``"12φ @ 6\" c/c"``.
-    """
-    dim = draw_dim_linear(
+    """Draw a linear dimension with an optional text override."""
+    return draw_dim_linear(
         target,
         p1=p1,
         p2=p2,
         location=location,
+        text_override=text_override,
         dimstyle=dimstyle,
         layer=layer,
     )
-    if text_override:
-        # dim.set_text_override(text_override)
-        pass
-    return dim
 
 
 __all__ = [
@@ -353,4 +346,5 @@ __all__ = [
     "draw_break_line",
     "draw_section_cut_symbol",
     "draw_dimension",
+    "draw_hatch",
 ]

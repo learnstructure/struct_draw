@@ -44,6 +44,7 @@ from struct_draw.backends import DrawingResult, render, save_dxf
 from struct_draw.core.data import (
     BeamData,
     ColumnData,
+    CombinedFootingData,
     FootingData,
     GeometrySection,
     MemberType,
@@ -64,6 +65,7 @@ __all__ = [
     # Data
     "BeamData",
     "ColumnData",
+    "CombinedFootingData",
     "FootingData",
     "GeometrySection",
     "MemberType",

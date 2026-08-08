@@ -17,6 +17,13 @@ Public modules:
 * :mod:`struct_draw.elements.slab` — plan + section views
 """
 
-from struct_draw.elements import beam, column, footing, slab, staircase  # noqa: F401
+from struct_draw.elements import (  # noqa: F401
+    beam,
+    column,
+    combined_footing,
+    footing,
+    slab,
+    staircase,
+)
 
-__all__ = ["beam", "column", "footing", "slab", "staircase"]
+__all__ = ["beam", "column", "combined_footing", "footing", "slab", "staircase"]

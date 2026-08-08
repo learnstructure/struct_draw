@@ -183,8 +183,9 @@ def draw_hatch(
     hatch = target.add_hatch(dxfattribs={"layer": layer})
     for path in paths:
         if path["type"] == "polyline":
+            is_closed = path.get("is_closed", path.get("close", True))
             hatch.paths.add_polyline_path(
-                path["points"], close=path.get("close", True)
+                path["points"], is_closed=is_closed
             )
         elif path["type"] == "circle":
             hatch.paths.add_circle(path["center"], path["radius"])
@@ -205,26 +206,36 @@ def draw_dim_linear(
     p2: tuple[float, float],
     location: tuple[float, float],
     *,
+    text_override: str | None = None,
     dimstyle: str = "Linear",
     layer: str = "DIM_LINEAR",
 ) -> Any:
-    """Draw a horizontal linear dimension between ``p1`` and ``p2``."""
-    # Different ezdxf versions accept either ``base=(p1, p2)`` or
-    # positional ``p1, p2``. Try the newer keyword form first and
-    # fall back to the positional one.
+    """Draw a linear dimension (horizontal or vertical) between ``p1`` and ``p2``."""
+    angle = 90.0 if abs(p1[0] - p2[0]) < 1e-6 else 0.0
     try:
-        return target.add_linear_dim(
-            base=(p1, p2),
-            location=location,
+        dim = target.add_linear_dim(
+            base=location,
+            p1=p1,
+            p2=p2,
+            angle=angle,
             dimstyle=dimstyle,
             dxfattribs={"layer": layer},
         )
     except TypeError:
-        return target.add_linear_dim(
+        dim = target.add_linear_dim(
             p1, p2, location,
+            angle=angle,
             dimstyle=dimstyle,
             dxfattribs={"layer": layer},
         )
+    if text_override is not None:
+        dim.set_text(text_override)
+    if hasattr(dim, "render"):
+        try:
+            dim.render()
+        except Exception:
+            pass
+    return dim
 
 
 def draw_dim_aligned(
@@ -233,16 +244,26 @@ def draw_dim_aligned(
     p2: tuple[float, float],
     location: tuple[float, float],
     *,
+    text_override: str | None = None,
     dimstyle: str = "Linear",
     layer: str = "DIM_LINEAR",
 ) -> Any:
     """Draw an aligned (parallel) dimension between ``p1`` and ``p2``."""
-    return target.add_aligned_dim(
-        base=(p1, p2),
-        location=location,
+    dim = target.add_aligned_dim(
+        base=location,
+        p1=p1,
+        p2=p2,
         dimstyle=dimstyle,
         dxfattribs={"layer": layer},
     )
+    if text_override is not None:
+        dim.set_text(text_override)
+    if hasattr(dim, "render"):
+        try:
+            dim.render()
+        except Exception:
+            pass
+    return dim
 
 
 def draw_dim_angular(
@@ -294,14 +315,22 @@ def draw_leader(
     text: str = "",
     *,
     arrow_size: float = 0.10,
+    text_height: float = 0.20,
     layer: str = "LEADER",
 ) -> Any:
     """Draw a multi-vertex leader with optional annotation text."""
     if len(vertices) < 2:
         raise DrawError("draw_leader requires at least two vertices.")
-    leader = target.add_leader(vertices=list(vertices), text=text, dxfattribs={"layer": layer})
-    if arrow_size:
-        leader.dxf.arrow_size = arrow_size
+    leader = target.add_leader(vertices=list(vertices), dxfattribs={"layer": layer})
+    if arrow_size and hasattr(leader, "dxf") and hasattr(leader.dxf, "arrow_size"):
+        try:
+            leader.dxf.arrow_size = arrow_size
+        except Exception:
+            pass
+    if text:
+        last_pt = vertices[-1]
+        text_pos = (last_pt[0] + text_height * 0.5, last_pt[1])
+        draw_text(target, text, position=text_pos, height=text_height, layer=layer)
     return leader
 
 

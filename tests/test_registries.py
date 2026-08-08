@@ -65,6 +65,22 @@ def test_dimension_style_registry() -> None:
     assert ds.arrow_size == pytest.approx(0.10)
 
 
+def test_default_dimension_styles_metric_and_imperial() -> None:
+    from struct_draw.style.dimension_styles import default_registry
+
+    reg_m = default_registry(is_metric=True)
+    ds_m = reg_m.require("Linear")
+    assert ds_m.text_height == 100.0
+    assert ds_m.arrow_size == 50.0
+    assert ds_m.fixed_extension_len == 50.0
+
+    reg_i = default_registry(is_metric=False)
+    ds_i = reg_i.require("Linear")
+    assert ds_i.text_height == 4.0
+    assert ds_i.arrow_size == 2.0
+    assert ds_i.fixed_extension_len == 2.0
+
+
 def test_block_registry_has_section_cut() -> None:
     reg = default_blocks()
     assert "SECTION_CUT" in reg

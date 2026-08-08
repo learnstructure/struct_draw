@@ -129,36 +129,43 @@ def ensure_dim_style(
     doc: Any,
     *,
     name: str,
-    textstyle: str = "Standard",
-    arrow_size: float = 0.10,
-    extension_offset: float = 0.0625,
-    extension_extension: float = 0.125,
+    textstyle: str = "Dimension",
+    text_height: float = 100.0,
+    arrow_size: float = 50.0,
+    extension_offset: float = 50.0,
+    extension_extension: float = 50.0,
+    fixed_extension_len: float | None = None,
 ) -> Any:
     """Create or update a dimension style on ``doc``.
 
-    We deliberately call :py:meth:`DimStyleTable.add` with **only**
-    ``name=`` and then poke the remaining properties via DXF group
-    codes. Different ``ezdxf`` versions expose slightly different
-    keyword names for the same properties (``textstyle`` vs
-    ``text_style``, ``dimblk`` family renames, etc.) — group codes
-    are the stable contract and work across all versions.
+    Pokes properties via DXF attributes on ``style.dxf``.
     """
     if name in doc.dimstyles:
         style = doc.dimstyles.get(name)
     else:
         style = doc.dimstyles.add(name=name)
 
-    # Map of group-code -> value. We set whatever we can; missing
-    # group codes (older ezdxf releases) are tolerated via try/except.
+    if fixed_extension_len is None:
+        fixed_extension_len = extension_extension
+
     pairs: list[tuple[str, Any]] = [
-        ("dimtxsty", textstyle),       # 340 — dimension text style
-        ("dimasz", arrow_size),        #  41 — arrow size
-        ("dimexo", extension_offset),  #  42 — extension line offset
-        ("dimexe", extension_extension),  #  44 — extension line extension
+        ("dimtxsty", textstyle),        # 340 — dimension text style
+        ("dimtxt", text_height),        # 140 — text height
+        ("dimasz", arrow_size),         #  41 — arrow size
+        ("dimexo", extension_offset),   #  42 — extension line offset
+        ("dimexe", extension_extension),#  44 — extension line extension
+        ("dimfxl", fixed_extension_len),# 371 — fixed extension line length
+        ("dimfxlon", 1),                # 290 — enable fixed extension line length
+        ("dimgap", text_height * 0.1),  # 147 — text gap proportional to text height
+        ("dimtad", 1),                  #  77 — text above dimension line
+        ("dimzin", 8),                  #  78 — suppress trailing zeros
+        ("dimclrd", 132),               # 176 — dimension line color
+        ("dimclre", 132),               # 177 — extension line color
+        ("dimclrt", 151),               # 178 — text color
     ]
     for code, value in pairs:
         try:
-            style.dxf.setattr(code, value)
+            setattr(style.dxf, code, value)
         except Exception:
             pass
     return style
@@ -224,9 +231,11 @@ def register_all_styles(
                 doc,
                 name=ds.name,
                 textstyle=ds.text_style,
+                text_height=ds.text_height or 100.0,
                 arrow_size=ds.arrow_size,
                 extension_offset=ds.extension_offset,
                 extension_extension=ds.extension_extension,
+                fixed_extension_len=ds.fixed_extension_len,
             )
     if blocks is not None:
         for block in blocks.blocks.values():
@@ -262,6 +271,7 @@ def _emit_block_primitive(block: Any, prim: dict[str, Any]) -> None:
 
 
 __all__ = [
+    "Document",
     "new_drawing",
     "ensure_linetype",
     "ensure_text_style",
@@ -271,3 +281,17 @@ __all__ = [
     "ensure_layout",
     "register_all_styles",
 ]
+
+
+class Document:
+    """A lightweight drawing document container for entities and metadata."""
+
+    def __init__(self, title: str = "Drawing") -> None:
+        self.title = title
+        self._entities: list[dict[str, Any]] = []
+
+    def add_entity(self, entity: dict[str, Any]) -> None:
+        self._entities.append(entity)
+
+    def iter_entities(self) -> Iterable[dict[str, Any]]:
+        return iter(self._entities)
