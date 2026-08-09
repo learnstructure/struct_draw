@@ -55,20 +55,20 @@ def _footing() -> FootingData:
 
 
 def _combined_footing_imperial() -> CombinedFootingData:
-    return CombinedFootingData(
+    return CombinedFootingData.from_imperial(
         name="CF1",
-        proj_left_in=60.0,
-        proj_right_in=48.0,
-        col_spacing_in=36.0,
+        proj_left=60.0,
+        proj_right=48.0,
+        col_spacing=36.0,
     )
 
 
 def _combined_footing_si() -> CombinedFootingData:
     return CombinedFootingData.from_metric(
         name="CF2",
-        proj_left_mm=1500.0,
-        proj_right_mm=1200.0,
-        col_spacing_mm=800.0,
+        proj_left=1500.0,
+        proj_right=1200.0,
+        col_spacing=800.0,
     )
 
 

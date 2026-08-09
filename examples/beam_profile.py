@@ -22,17 +22,17 @@ def main() -> None:
     beam_profile = BeamProfileData.from_metric(
         name="L-SECTION OF BEAM ALONG GRIDS A-A",
         grid_line_name="A-A",
-        spans_mm=(5500.0, 4000.0, 3000.0, 4000.0, 5500.0),  # Span lengths
-        col_width_mm=450.0,                               # Column width at supports
-        beam_width_mm=300.0,                              # Beam cross-section width
-        beam_depth_mm=450.0,                              # Beam cross-section depth
-        cover_mm=40.0,                                    # Clear concrete cover
-        col_extension_mm=975.0,                           # Vertical column stub extension
-        grid_extension_mm=1500.0,                         # Grid line bubble extension
+        spans=(5500.0, 4000.0, 3000.0, 4000.0, 5500.0),  # Span lengths
+        col_width=450.0,                               # Column width at supports
+        beam_width=450.0,                              # Beam cross-section width
+        beam_depth=450.0,                              # Beam cross-section depth
+        cover=40.0,                                    # Clear concrete cover
+        col_extension=975.0,                           # Vertical column stub extension
+        grid_extension=1500.0,                         # Grid line bubble extension
         grid_labels=("A", "B", "C", "D", "E", "F"),       # Grid line labels
         level_text="PL+3.0 m",                            # Plinth / floor level label
-        support_stirrup_spacing_mm=100.0,                 # Dense stirrup spacing at supports
-        mid_stirrup_spacing_mm=150.0,                     # Mid-span stirrup spacing
+        support_stirrup_spacing=100.0,                 # Dense stirrup spacing at supports
+        mid_stirrup_spacing=150.0,                     # Mid-span stirrup spacing
         stirrup=Stirrup(size="10mm dia", spacing_in=100.0, legs=2),
         top_bars=(Rebar(mark="TB1", size="20mm dia", quantity=2),),
         bottom_bars=(Rebar(mark="BB1", size="20mm dia", quantity=3),),

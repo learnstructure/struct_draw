@@ -38,17 +38,17 @@ from struct_draw.core.primitives import draw_rectangle
 # ---------------------------------------------------------------------------
 
 
-def _bar_positions(bar: Rebar, *, section_width: float, cover: float) -> list[float]:
+def _bar_positions(bar: Rebar, *, section_width: float, cover: float, bar_dia: float = 0.625) -> list[float]:
     """Compute the x-positions of an evenly-spaced row of bar dots.
 
     Reads ``bar.quantity`` (or falls back to 1) and spreads the
-    bars between ``cover`` and ``section_width - cover``.
+    bars between ``cover + bar_dia / 2`` and ``section_width - cover - bar_dia / 2``.
     """
     n = max(1, int(getattr(bar, "quantity", 1) or 1))
     if n == 1:
         return [section_width / 2.0]
-    x_left = cover
-    x_right = section_width - cover
+    x_left = cover + bar_dia / 2.0
+    x_right = section_width - cover - bar_dia / 2.0
     step = (x_right - x_left) / (n - 1)
     return [x_left + i * step for i in range(n)]
 
@@ -84,35 +84,32 @@ def section_view(
     draw_concrete_outline(target, origin=(ox, oy), width=w, height=d, layer="CONC_OUTLINE")
 
     # ----- Stirrup.
-    stirrup_size = _bar_diameter(beam.stirrups.size)
-    sw = max(0.0, w - 2.0 * (cover + stirrup_size / 2.0))
-    sh = max(0.0, d - 2.0 * (cover + stirrup_size / 2.0))
-    sx0 = ox + (w - sw) / 2.0
-    sy0 = oy + (d - sh) / 2.0
+    sw = max(1.0, w - 2.0 * cover)
+    sh = max(1.0, d - 2.0 * cover)
     if sw > 0 and sh > 0:
         draw_stirrup_hooked(
             target,
             width=sw,
             height=sh,
-            origin=(sx0, sy0),
+            origin=(ox + cover, oy + cover),
             hook_length=min(sw, sh) * 0.2,
             layer="STIRRUP",
         )
 
     # ----- Top bars (row of dots).
     top_bars = list(beam.top_bars) if beam.top_bars else [_default_bar("#5", 2, "T")]
-    top_y = oy + d - cover
     for bar in top_bars:
-        for x_local in _bar_positions(bar, section_width=w, cover=cover):
-            dia = _bar_diameter(bar.size)
+        dia = _bar_diameter(bar.size)
+        top_y = oy + d - cover - dia / 2.0
+        for x_local in _bar_positions(bar, section_width=w, cover=cover, bar_dia=dia):
             draw_rebar_circle(target, (ox + x_local, top_y), diameter=dia * 1.2, layer="REBAR")
 
     # ----- Bottom bars (row of dots).
     bot_bars = list(beam.bottom_bars) if beam.bottom_bars else [_default_bar("#5", 2, "B")]
-    bot_y = oy + cover
     for bar in bot_bars:
-        for x_local in _bar_positions(bar, section_width=w, cover=cover):
-            dia = _bar_diameter(bar.size)
+        dia = _bar_diameter(bar.size)
+        bot_y = oy + cover + dia / 2.0
+        for x_local in _bar_positions(bar, section_width=w, cover=cover, bar_dia=dia):
             draw_rebar_circle(target, (ox + x_local, bot_y), diameter=dia * 1.2, layer="REBAR")
 
     # ----- Linear dimensions (width below, depth on the left).

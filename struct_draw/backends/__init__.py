@@ -117,10 +117,10 @@ def _render_dxf(data: Any) -> DrawingResult:
     is_metric = False
     if hasattr(data, "is_metric"):
         is_metric = bool(data.is_metric)
-    elif hasattr(data, "length_in"):
-        is_metric = float(data.length_in) >= 300.0
     elif hasattr(data, "section") and hasattr(data.section, "width_in"):
-        is_metric = float(data.section.width_in) >= 300.0
+        is_metric = float(data.section.width_in) >= 100.0 or float(data.section.depth_in) >= 100.0
+    elif hasattr(data, "length_in"):
+        is_metric = float(data.length_in) >= 1000.0
 
     doc = new_drawing()
     register_all_styles(

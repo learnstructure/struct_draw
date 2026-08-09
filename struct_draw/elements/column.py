@@ -44,16 +44,15 @@ def section_view(
 
     draw_concrete_outline(target, origin=(ox, oy), width=w, height=d, layer="COLUMN")
 
-    # Stirrup (assuming #3 bar unless the data says otherwise).
-    stirrup_dia = 0.375
-    sw = max(0.0, w - 2.0 * (cover + stirrup_dia / 2.0))
-    sh = max(0.0, d - 2.0 * (cover + stirrup_dia / 2.0))
+    # Stirrup.
+    sw = max(1.0, w - 2.0 * cover)
+    sh = max(1.0, d - 2.0 * cover)
     if sw > 0 and sh > 0:
         draw_stirrup_hooked(
             target,
             width=sw,
             height=sh,
-            origin=(ox + (w - sw) / 2.0, oy + (d - sh) / 2.0),
+            origin=(ox + cover, oy + cover),
             hook_length=min(sw, sh) * 0.2,
             layer="STIRRUP",
         )
@@ -61,8 +60,8 @@ def section_view(
     # Longitudinal bars (corners + sides). Default: 4 corners if none given.
     bars = list(column.longitudinal_bars) or [_corner_bar("C", i + 1) for i in range(4)]
     for i, bar in enumerate(bars):
-        x_local, y_local = _bar_xy(i, len(bars), w, d, cover)
         dia = _bar_diameter(bar.size)
+        x_local, y_local = _bar_xy(i, len(bars), w, d, cover, bar_dia=dia)
         draw_rebar_circle(target, (ox + x_local, oy + y_local), diameter=dia * 1.2, layer="REBAR")
 
     # Linear dimensions.
@@ -138,35 +137,39 @@ def elevation_view(
 # ---------------------------------------------------------------------------
 
 
-def _bar_xy(index: int, total: int, w: float, d: float, cover: float) -> tuple[float, float]:
-    """Return the (x_local, y_local) of bar ``index`` of ``total``.
+def _bar_xy(index: int, total: int, w: float, d: float, cover: float, bar_dia: float = 1.0) -> tuple[float, float]:
+    """Compute local ``(x, y)`` coordinates of bar ``index`` in a column.
 
-    For ``total == 4`` the four corners are used. For other
-    counts, bars are evenly spaced around the inside perimeter
+    Corner bars sit inside the stirrup at ``cover + bar_dia / 2``.
+    For larger counts, bars are evenly spaced around the inside perimeter
     starting from the bottom-left corner and going clockwise.
     """
-    if total == 4:
+    c_x = cover + bar_dia / 2.0
+    c_y = cover + bar_dia / 2.0
+    r_x = w - cover - bar_dia / 2.0
+    r_y = d - cover - bar_dia / 2.0
+
+    if total <= 4:
         corners = [
-            (cover, cover),
-            (w - cover, cover),
-            (w - cover, d - cover),
-            (cover, d - cover),
+            (c_x, c_y),
+            (r_x, c_y),
+            (r_x, r_y),
+            (c_x, r_y),
         ]
         return corners[index % 4]
     # Generic placement: evenly around the inside perimeter.
-    perimeter = 2.0 * (w + d - 4.0 * cover)
-    s = perimeter * index / max(total, 1)
-    s = s % perimeter
-    if s < (w - 2 * cover):
-        return (cover + s, cover)
-    s -= (w - 2 * cover)
-    if s < (d - 2 * cover):
-        return (w - cover, cover + s)
-    s -= (d - 2 * cover)
-    if s < (w - 2 * cover):
-        return (w - cover - s, d - cover)
-    s -= (w - 2 * cover)
-    return (cover, d - cover - s)
+    perimeter = 2.0 * ((r_x - c_x) + (r_y - c_y))
+    s = (perimeter * index / max(total, 1)) % perimeter
+    if s < (r_x - c_x):
+        return (c_x + s, c_y)
+    s -= (r_x - c_x)
+    if s < (r_y - c_y):
+        return (r_x, c_y + s)
+    s -= (r_x - c_x)
+    if s < (r_x - c_x):
+        return (r_x - s, r_y)
+    s -= (r_x - c_x)
+    return (c_x, r_y - s)
 
 
 def _corner_bar(prefix: str, idx: int) -> Rebar:

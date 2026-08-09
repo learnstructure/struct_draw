@@ -25,20 +25,25 @@ from struct_draw.adapters.aci318 import from_beam_result
 
 def make_fake_aci318_result():
     """Build a fake ``BeamDesignResult`` + ``BeamDetailingResult`` pair."""
-    section = SimpleNamespace(width=12.0, depth=24.0, cover=1.5)
+    # ACI 318 uses US Imperial units (dimensions in inches)
+    section = SimpleNamespace(
+        width=12.0,     # 12 inches (1.0 ft)
+        depth=24.0,     # 24 inches (2.0 ft)
+        cover=1.5,      # 1.5 inches clear cover
+    )
     design = SimpleNamespace(
         name="B2",
         section=section,
-        length=300.0,
+        length=300.0,   # 300 inches (25.0 ft span)
         flexure=SimpleNamespace(As_top=0.62, As_bottom=0.93),
         shear=SimpleNamespace(stirrup_size="#3", stirrup_spacing=6.0),
     )
     detailing = SimpleNamespace(
         top_bars=(
-            SimpleNamespace(mark="T1", size="#5", quantity=2, length=300.0),
+            SimpleNamespace(mark="T1", size="#5", quantity=2, length=300.0),  # 300 in
         ),
         bottom_bars=(
-            SimpleNamespace(mark="B1", size="#5", quantity=3, length=300.0),
+            SimpleNamespace(mark="B1", size="#5", quantity=3, length=300.0),  # 300 in
         ),
         schedule_rows=(
             SimpleNamespace(mark="T1", size="#5", qty=2, length=300.0, remarks="TOP"),

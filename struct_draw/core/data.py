@@ -156,6 +156,11 @@ class BeamData:
     schedule: Sequence[ScheduleRow] = field(default_factory=tuple)
     length_in: float = 240.0
 
+    @property
+    def is_metric(self) -> bool:
+        """True if the beam dimensions are specified in SI metric units (mm)."""
+        return self.section.width_in >= 100.0 or self.section.depth_in >= 100.0
+
 
 @dataclass(frozen=True)
 class BeamProfileSpan:
@@ -253,41 +258,104 @@ class BeamProfileData:
         *,
         name: str = "PB-1",
         grid_line_name: str = "A-A",
-        spans_mm: Sequence[float] = (5500.0, 4000.0, 3000.0, 4000.0, 5500.0),
-        col_width_mm: float = 450.0,
-        beam_width_mm: float = 450.0,
-        beam_depth_mm: float = 450.0,
-        cover_mm: float = 40.0,
-        col_extension_mm: float = 975.0,
-        grid_extension_mm: float = 1500.0,
+        spans: Sequence[float] | None = None,
+        col_width: float | None = None,
+        beam_width: float | None = None,
+        beam_depth: float | None = None,
+        cover: float | None = None,
+        col_extension: float | None = None,
+        grid_extension: float | None = None,
         grid_labels: Sequence[str] = (),
         level_text: str = "PL+3.0 m",
         top_bars: Sequence[Rebar] = (),
         bottom_bars: Sequence[Rebar] = (),
         top_extra_bars: Sequence[Rebar] = (),
         stirrup: Stirrup | None = None,
-        support_stirrup_spacing_mm: float = 100.0,
-        mid_stirrup_spacing_mm: float = 150.0,
+        support_stirrup_spacing: float | None = None,
+        mid_stirrup_spacing: float | None = None,
     ) -> BeamProfileData:
-        """Construct BeamProfileData directly from SI metric parameters (in mm)."""
+        """Construct BeamProfileData directly from SI metric parameters."""
+        _spans = spans if spans is not None else (5500.0, 4000.0, 3000.0, 4000.0, 5500.0)
+        _col_width = col_width if col_width is not None else 450.0
+        _beam_width = beam_width if beam_width is not None else 450.0
+        _beam_depth = beam_depth if beam_depth is not None else 450.0
+        _cover = cover if cover is not None else 40.0
+        _col_extension = col_extension if col_extension is not None else 975.0
+        _grid_extension = grid_extension if grid_extension is not None else 1500.0
+        _supp_spacing = support_stirrup_spacing if support_stirrup_spacing is not None else 100.0
+        _mid_spacing = mid_stirrup_spacing if mid_stirrup_spacing is not None else 150.0
+
         return cls(
             name=name,
             grid_line_name=grid_line_name,
-            spans_in=tuple(spans_mm),
-            col_width_in=col_width_mm,
-            beam_width_in=beam_width_mm,
-            beam_depth_in=beam_depth_mm,
-            cover_in=cover_mm,
-            col_extension_in=col_extension_mm,
-            grid_extension_in=grid_extension_mm,
+            spans_in=tuple(_spans),
+            col_width_in=_col_width,
+            beam_width_in=_beam_width,
+            beam_depth_in=_beam_depth,
+            cover_in=_cover,
+            col_extension_in=_col_extension,
+            grid_extension_in=_grid_extension,
             grid_labels=tuple(grid_labels),
             level_text=level_text,
             top_bars=top_bars,
             bottom_bars=bottom_bars,
             top_extra_bars=top_extra_bars,
             stirrup=stirrup or Stirrup(size="10mm dia", spacing_in=100.0),
-            support_stirrup_spacing_in=support_stirrup_spacing_mm,
-            mid_stirrup_spacing_in=mid_stirrup_spacing_mm,
+            support_stirrup_spacing_in=_supp_spacing,
+            mid_stirrup_spacing_in=_mid_spacing,
+        )
+
+    @classmethod
+    def from_imperial(
+        cls,
+        *,
+        name: str = "PB-1",
+        grid_line_name: str = "A-A",
+        spans: Sequence[float] | None = None,
+        col_width: float | None = None,
+        beam_width: float | None = None,
+        beam_depth: float | None = None,
+        cover: float | None = None,
+        col_extension: float | None = None,
+        grid_extension: float | None = None,
+        grid_labels: Sequence[str] = (),
+        level_text: str = 'ELEV. +10\' - 0"',
+        top_bars: Sequence[Rebar] = (),
+        bottom_bars: Sequence[Rebar] = (),
+        top_extra_bars: Sequence[Rebar] = (),
+        stirrup: Stirrup | None = None,
+        support_stirrup_spacing: float | None = None,
+        mid_stirrup_spacing: float | None = None,
+    ) -> BeamProfileData:
+        """Construct BeamProfileData directly from Imperial parameters (in inches)."""
+        _spans = spans if spans is not None else (216.0, 160.0, 120.0, 160.0, 216.0)
+        _col_width = col_width if col_width is not None else 18.0
+        _beam_width = beam_width if beam_width is not None else 18.0
+        _beam_depth = beam_depth if beam_depth is not None else 18.0
+        _cover = cover if cover is not None else 1.5
+        _col_extension = col_extension if col_extension is not None else 39.0
+        _grid_extension = grid_extension if grid_extension is not None else 60.0
+        _supp_spacing = support_stirrup_spacing if support_stirrup_spacing is not None else 4.0
+        _mid_spacing = mid_stirrup_spacing if mid_stirrup_spacing is not None else 6.0
+
+        return cls(
+            name=name,
+            grid_line_name=grid_line_name,
+            spans_in=tuple(_spans),
+            col_width_in=_col_width,
+            beam_width_in=_beam_width,
+            beam_depth_in=_beam_depth,
+            cover_in=_cover,
+            col_extension_in=_col_extension,
+            grid_extension_in=_grid_extension,
+            grid_labels=tuple(grid_labels),
+            level_text=level_text,
+            top_bars=top_bars,
+            bottom_bars=bottom_bars,
+            top_extra_bars=top_extra_bars,
+            stirrup=stirrup or Stirrup(size="#3", spacing_in=4.0),
+            support_stirrup_spacing_in=_supp_spacing,
+            mid_stirrup_spacing_in=_mid_spacing,
         )
 
 
@@ -362,56 +430,155 @@ class FootingData:
         cls,
         *,
         name: str = "F2",
-        length_mm: float = 1600.0,
-        width_mm: float = 1600.0,
-        mid_thick_mm: float = 400.0,
-        edge_thick_mm: float = 200.0,
-        col_width_mm: float = 350.0,
-        col_depth_mm: float = 350.0,
-        col_height_mm: float = 2100.0,
-        fd_depth_mm: float = 1500.0,
-        pl_height_mm: float = 600.0,
-        cover_mm: float = 75.0,
-        bar_dia_mm: float = 12.0,
-        bar_spacing_mm: float = 150.0,
-        ld_mm: float = 600.0,
-        ledge_mm: float = 100.0,
-        pcc_thick_mm: float = 75.0,
-        soling_thick_mm: float = 75.0,
+        length: float | None = None,
+        width: float | None = None,
+        mid_thick: float | None = None,
+        edge_thick: float | None = None,
+        col_width: float | None = None,
+        col_depth: float | None = None,
+        col_height: float | None = None,
+        fd_depth: float | None = None,
+        pl_height: float | None = None,
+        cover: float | None = None,
+        bar_dia: float | None = None,
+        bar_spacing: float | None = None,
+        ld: float | None = None,
+        ledge: float | None = None,
+        pcc_thick: float | None = None,
+        soling_thick: float | None = None,
         soling_material: str = "brick",
-        plinth_beam_w_mm: float = 230.0,
-        plinth_beam_h_mm: float = 350.0,
-        found_beam_w_mm: float = 230.0,
-        found_beam_h_mm: float = 300.0,
+        plinth_beam_w: float | None = None,
+        plinth_beam_h: float | None = None,
+        found_beam_w: float | None = None,
+        found_beam_h: float | None = None,
         column_bars: Sequence[Rebar] = (),
         column_stirrups: Stirrup | None = None,
     ) -> FootingData:
-        """Construct FootingData directly from SI metric parameters (in mm)."""
+        """Construct FootingData directly from SI metric parameters."""
+        _length = length if length is not None else 1600.0
+        _width = width if width is not None else 1600.0
+        _mid_thick = mid_thick if mid_thick is not None else 400.0
+        _edge_thick = edge_thick if edge_thick is not None else 200.0
+        _col_width = col_width if col_width is not None else 350.0
+        _col_depth = col_depth if col_depth is not None else 350.0
+        _col_height = col_height if col_height is not None else 2100.0
+        _fd_depth = fd_depth if fd_depth is not None else 1500.0
+        _pl_height = pl_height if pl_height is not None else 600.0
+        _cover = cover if cover is not None else 75.0
+        _bar_dia = bar_dia if bar_dia is not None else 12.0
+        _bar_spacing = bar_spacing if bar_spacing is not None else 150.0
+        _ld = ld if ld is not None else 600.0
+        _ledge = ledge if ledge is not None else 100.0
+        _pcc_thick = pcc_thick if pcc_thick is not None else 75.0
+        _soling_thick = soling_thick if soling_thick is not None else 75.0
+        _plinth_beam_w = plinth_beam_w if plinth_beam_w is not None else 230.0
+        _plinth_beam_h = plinth_beam_h if plinth_beam_h is not None else 350.0
+        _found_beam_w = found_beam_w if found_beam_w is not None else 230.0
+        _found_beam_h = found_beam_h if found_beam_h is not None else 300.0
+
         return cls(
             name=name,
-            length_in=length_mm,
-            width_in=width_mm,
-            mid_thickness_in=mid_thick_mm,
-            edge_thickness_in=edge_thick_mm,
-            column_width_in=col_width_mm,
-            column_depth_in=col_depth_mm,
-            column_height_in=col_height_mm,
-            footing_depth_in=fd_depth_mm,
-            plinth_height_in=pl_height_mm,
-            cover_in=cover_mm,
-            bar_dia_in=bar_dia_mm,
-            bar_spacing_in=bar_spacing_mm,
-            development_length_in=ld_mm,
-            ledge_in=ledge_mm,
-            pcc_thickness_in=pcc_thick_mm,
-            soling_thickness_in=soling_thick_mm,
+            length_in=_length,
+            width_in=_width,
+            mid_thickness_in=_mid_thick,
+            edge_thickness_in=_edge_thick,
+            column_width_in=_col_width,
+            column_depth_in=_col_depth,
+            column_height_in=_col_height,
+            footing_depth_in=_fd_depth,
+            plinth_height_in=_pl_height,
+            cover_in=_cover,
+            bar_dia_in=_bar_dia,
+            bar_spacing_in=_bar_spacing,
+            development_length_in=_ld,
+            ledge_in=_ledge,
+            pcc_thickness_in=_pcc_thick,
+            soling_thickness_in=_soling_thick,
             soling_material=soling_material,
-            plinth_beam_width_in=plinth_beam_w_mm,
-            plinth_beam_depth_in=plinth_beam_h_mm,
-            foundation_beam_width_in=found_beam_w_mm,
-            foundation_beam_depth_in=found_beam_h_mm,
+            plinth_beam_width_in=_plinth_beam_w,
+            plinth_beam_depth_in=_plinth_beam_h,
+            foundation_beam_width_in=_found_beam_w,
+            foundation_beam_depth_in=_found_beam_h,
             column_bars=column_bars,
             column_stirrups=column_stirrups or Stirrup(size="8mm dia", spacing_in=100.0),
+        )
+
+    @classmethod
+    def from_imperial(
+        cls,
+        *,
+        name: str = "F1",
+        length: float | None = None,
+        width: float | None = None,
+        mid_thick: float | None = None,
+        edge_thick: float | None = None,
+        col_width: float | None = None,
+        col_depth: float | None = None,
+        col_height: float | None = None,
+        fd_depth: float | None = None,
+        pl_height: float | None = None,
+        cover: float | None = None,
+        bar_dia: float | None = None,
+        bar_spacing: float | None = None,
+        ld: float | None = None,
+        ledge: float | None = None,
+        pcc_thick: float | None = None,
+        soling_thick: float | None = None,
+        soling_material: str = "brick",
+        plinth_beam_w: float | None = None,
+        plinth_beam_h: float | None = None,
+        found_beam_w: float | None = None,
+        found_beam_h: float | None = None,
+        column_bars: Sequence[Rebar] = (),
+        column_stirrups: Stirrup | None = None,
+    ) -> FootingData:
+        """Construct FootingData directly from Imperial parameters (in inches)."""
+        _length = length if length is not None else 64.0
+        _width = width if width is not None else 64.0
+        _mid_thick = mid_thick if mid_thick is not None else 16.0
+        _edge_thick = edge_thick if edge_thick is not None else 8.0
+        _col_width = col_width if col_width is not None else 14.0
+        _col_depth = col_depth if col_depth is not None else 14.0
+        _col_height = col_height if col_height is not None else 84.0
+        _fd_depth = fd_depth if fd_depth is not None else 60.0
+        _pl_height = pl_height if pl_height is not None else 24.0
+        _cover = cover if cover is not None else 3.0
+        _bar_dia = bar_dia if bar_dia is not None else 0.5
+        _bar_spacing = bar_spacing if bar_spacing is not None else 6.0
+        _ld = ld if ld is not None else 24.0
+        _ledge = ledge if ledge is not None else 4.0
+        _pcc_thick = pcc_thick if pcc_thick is not None else 3.0
+        _soling_thick = soling_thick if soling_thick is not None else 3.0
+        _plinth_beam_w = plinth_beam_w if plinth_beam_w is not None else 0.0
+        _plinth_beam_h = plinth_beam_h if plinth_beam_h is not None else 0.0
+        _found_beam_w = found_beam_w if found_beam_w is not None else 0.0
+        _found_beam_h = found_beam_h if found_beam_h is not None else 0.0
+
+        return cls(
+            name=name,
+            length_in=_length,
+            width_in=_width,
+            mid_thickness_in=_mid_thick,
+            edge_thickness_in=_edge_thick,
+            column_width_in=_col_width,
+            column_depth_in=_col_depth,
+            column_height_in=_col_height,
+            footing_depth_in=_fd_depth,
+            plinth_height_in=_pl_height,
+            cover_in=_cover,
+            bar_dia_in=_bar_dia,
+            bar_spacing_in=_bar_spacing,
+            development_length_in=_ld,
+            ledge_in=_ledge,
+            pcc_thickness_in=_pcc_thick,
+            soling_thickness_in=_soling_thick,
+            soling_material=soling_material,
+            plinth_beam_width_in=_plinth_beam_w,
+            plinth_beam_depth_in=_plinth_beam_h,
+            foundation_beam_width_in=_found_beam_w,
+            foundation_beam_depth_in=_found_beam_h,
+            column_bars=column_bars,
+            column_stirrups=column_stirrups or Stirrup(size="#3", spacing_in=6.0),
         )
 
 
@@ -504,62 +671,173 @@ class CombinedFootingData:
         cls,
         *,
         name: str = "CF2",
-        proj_left_mm: float = 1500.0,
-        proj_right_mm: float = 1200.0,
-        col_spacing_mm: float = 800.0,
-        width_mm: float = 1600.0,
-        thickness_mm: float = 400.0,
-        col1_width_mm: float = 350.0,
-        col1_depth_mm: float = 350.0,
-        col2_width_mm: float = 350.0,
-        col2_depth_mm: float = 350.0,
-        fd_depth_mm: float = 1500.0,
-        pl_height_mm: float = 600.0,
-        pcc_thick_mm: float = 75.0,
-        soling_thick_mm: float = 75.0,
+        proj_left: float | None = None,
+        proj_right: float | None = None,
+        col_spacing: float | None = None,
+        width: float | None = None,
+        thickness: float | None = None,
+        col1_width: float | None = None,
+        col1_depth: float | None = None,
+        col2_width: float | None = None,
+        col2_depth: float | None = None,
+        fd_depth: float | None = None,
+        pl_height: float | None = None,
+        pcc_thick: float | None = None,
+        soling_thick: float | None = None,
         soling_material: str = "brick",
-        cover_mm: float = 50.0,
-        bar_dia_mm: float = 12.0,
-        bar_spacing_mm: float = 150.0,
-        top_bar_dia_mm: float | None = None,
-        top_bar_spacing_mm: float | None = None,
-        plinth_beam_w_mm: float = 230.0,
-        plinth_beam_h_mm: float = 350.0,
-        found_beam_w_mm: float = 230.0,
-        found_beam_h_mm: float = 300.0,
-        ld_mm: float = 600.0,
+        cover: float | None = None,
+        bar_dia: float | None = None,
+        bar_spacing: float | None = None,
+        top_bar_dia: float | None = None,
+        top_bar_spacing: float | None = None,
+        plinth_beam_w: float | None = None,
+        plinth_beam_h: float | None = None,
+        found_beam_w: float | None = None,
+        found_beam_h: float | None = None,
+        ld: float | None = None,
         column_bars: Sequence[Rebar] = (),
         column_stirrups: Stirrup | None = None,
     ) -> CombinedFootingData:
-        """Construct CombinedFootingData directly from SI metric parameters (in mm)."""
+        """Construct CombinedFootingData directly from SI metric parameters."""
+        _proj_left = proj_left if proj_left is not None else 1500.0
+        _proj_right = proj_right if proj_right is not None else 1200.0
+        _col_spacing = col_spacing if col_spacing is not None else 800.0
+        _width = width if width is not None else 1600.0
+        _thickness = thickness if thickness is not None else 400.0
+        _col1_width = col1_width if col1_width is not None else 350.0
+        _col1_depth = col1_depth if col1_depth is not None else 350.0
+        _col2_width = col2_width if col2_width is not None else 350.0
+        _col2_depth = col2_depth if col2_depth is not None else 350.0
+        _fd_depth = fd_depth if fd_depth is not None else 1500.0
+        _pl_height = pl_height if pl_height is not None else 600.0
+        _pcc_thick = pcc_thick if pcc_thick is not None else 75.0
+        _soling_thick = soling_thick if soling_thick is not None else 75.0
+        _cover = cover if cover is not None else 50.0
+        _bar_dia = bar_dia if bar_dia is not None else 12.0
+        _bar_spacing = bar_spacing if bar_spacing is not None else 150.0
+        _top_bar_dia = top_bar_dia
+        _top_bar_spacing = top_bar_spacing
+        _plinth_beam_w = plinth_beam_w if plinth_beam_w is not None else 230.0
+        _plinth_beam_h = plinth_beam_h if plinth_beam_h is not None else 350.0
+        _found_beam_w = found_beam_w if found_beam_w is not None else 230.0
+        _found_beam_h = found_beam_h if found_beam_h is not None else 300.0
+        _ld = ld if ld is not None else 600.0
+
         return cls(
             name=name,
-            proj_left_in=proj_left_mm,
-            proj_right_in=proj_right_mm,
-            col_spacing_in=col_spacing_mm,
-            width_in=width_mm,
-            thickness_in=thickness_mm,
-            col1_width_in=col1_width_mm,
-            col1_depth_in=col1_depth_mm,
-            col2_width_in=col2_width_mm,
-            col2_depth_in=col2_depth_mm,
-            footing_depth_in=fd_depth_mm,
-            plinth_height_in=pl_height_mm,
-            pcc_thickness_in=pcc_thick_mm,
-            soling_thickness_in=soling_thick_mm,
+            proj_left_in=_proj_left,
+            proj_right_in=_proj_right,
+            col_spacing_in=_col_spacing,
+            width_in=_width,
+            thickness_in=_thickness,
+            col1_width_in=_col1_width,
+            col1_depth_in=_col1_depth,
+            col2_width_in=_col2_width,
+            col2_depth_in=_col2_depth,
+            footing_depth_in=_fd_depth,
+            plinth_height_in=_pl_height,
+            pcc_thickness_in=_pcc_thick,
+            soling_thickness_in=_soling_thick,
             soling_material=soling_material,
-            cover_in=cover_mm,
-            bar_dia_in=bar_dia_mm,
-            bar_spacing_in=bar_spacing_mm,
-            top_bar_dia_in=top_bar_dia_mm,
-            top_bar_spacing_in=top_bar_spacing_mm,
-            plinth_beam_width_in=plinth_beam_w_mm,
-            plinth_beam_depth_in=plinth_beam_h_mm,
-            foundation_beam_width_in=found_beam_w_mm,
-            foundation_beam_depth_in=found_beam_h_mm,
-            development_length_in=ld_mm,
+            cover_in=_cover,
+            bar_dia_in=_bar_dia,
+            bar_spacing_in=_bar_spacing,
+            top_bar_dia_in=_top_bar_dia,
+            top_bar_spacing_in=_top_bar_spacing,
+            plinth_beam_width_in=_plinth_beam_w,
+            plinth_beam_depth_in=_plinth_beam_h,
+            foundation_beam_width_in=_found_beam_w,
+            foundation_beam_depth_in=_found_beam_h,
+            development_length_in=_ld,
             column_bars=column_bars,
             column_stirrups=column_stirrups or Stirrup(size="8mm dia", spacing_in=100.0),
+        )
+
+    @classmethod
+    def from_imperial(
+        cls,
+        *,
+        name: str = "CF1",
+        proj_left: float | None = None,
+        proj_right: float | None = None,
+        col_spacing: float | None = None,
+        width: float | None = None,
+        thickness: float | None = None,
+        col1_width: float | None = None,
+        col1_depth: float | None = None,
+        col2_width: float | None = None,
+        col2_depth: float | None = None,
+        fd_depth: float | None = None,
+        pl_height: float | None = None,
+        pcc_thick: float | None = None,
+        soling_thick: float | None = None,
+        soling_material: str = "brick",
+        cover: float | None = None,
+        bar_dia: float | None = None,
+        bar_spacing: float | None = None,
+        top_bar_dia: float | None = None,
+        top_bar_spacing: float | None = None,
+        plinth_beam_w: float | None = None,
+        plinth_beam_h: float | None = None,
+        found_beam_w: float | None = None,
+        found_beam_h: float | None = None,
+        ld: float | None = None,
+        column_bars: Sequence[Rebar] = (),
+        column_stirrups: Stirrup | None = None,
+    ) -> CombinedFootingData:
+        """Construct CombinedFootingData directly from Imperial parameters (in inches)."""
+        _proj_left = proj_left if proj_left is not None else 60.0
+        _proj_right = proj_right if proj_right is not None else 48.0
+        _col_spacing = col_spacing if col_spacing is not None else 32.0
+        _width = width if width is not None else 64.0
+        _thickness = thickness if thickness is not None else 16.0
+        _col1_width = col1_width if col1_width is not None else 14.0
+        _col1_depth = col1_depth if col1_depth is not None else 14.0
+        _col2_width = col2_width if col2_width is not None else 14.0
+        _col2_depth = col2_depth if col2_depth is not None else 14.0
+        _fd_depth = fd_depth if fd_depth is not None else 60.0
+        _pl_height = pl_height if pl_height is not None else 24.0
+        _pcc_thick = pcc_thick if pcc_thick is not None else 3.0
+        _soling_thick = soling_thick if soling_thick is not None else 3.0
+        _cover = cover if cover is not None else 2.0
+        _bar_dia = bar_dia if bar_dia is not None else 0.5
+        _bar_spacing = bar_spacing if bar_spacing is not None else 6.0
+        _top_bar_dia = top_bar_dia
+        _top_bar_spacing = top_bar_spacing
+        _plinth_beam_w = plinth_beam_w if plinth_beam_w is not None else 0.0
+        _plinth_beam_h = plinth_beam_h if plinth_beam_h is not None else 0.0
+        _found_beam_w = found_beam_w if found_beam_w is not None else 0.0
+        _found_beam_h = found_beam_h if found_beam_h is not None else 0.0
+        _ld = ld if ld is not None else 24.0
+
+        return cls(
+            name=name,
+            proj_left_in=_proj_left,
+            proj_right_in=_proj_right,
+            col_spacing_in=_col_spacing,
+            width_in=_width,
+            thickness_in=_thickness,
+            col1_width_in=_col1_width,
+            col1_depth_in=_col1_depth,
+            col2_width_in=_col2_width,
+            col2_depth_in=_col2_depth,
+            footing_depth_in=_fd_depth,
+            plinth_height_in=_pl_height,
+            pcc_thickness_in=_pcc_thick,
+            soling_thickness_in=_soling_thick,
+            soling_material=soling_material,
+            cover_in=_cover,
+            bar_dia_in=_bar_dia,
+            bar_spacing_in=_bar_spacing,
+            top_bar_dia_in=_top_bar_dia,
+            top_bar_spacing_in=_top_bar_spacing,
+            plinth_beam_width_in=_plinth_beam_w,
+            plinth_beam_depth_in=_plinth_beam_h,
+            foundation_beam_width_in=_found_beam_w,
+            foundation_beam_depth_in=_found_beam_h,
+            development_length_in=_ld,
+            column_bars=column_bars,
+            column_stirrups=column_stirrups or Stirrup(size="#3", spacing_in=6.0),
         )
 
 
@@ -589,6 +867,11 @@ class ColumnData:
     longitudinal_bars: Sequence[Rebar] = field(default_factory=tuple)
     stirrups: Stirrup = field(default_factory=Stirrup)
     schedule: Sequence[ScheduleRow] = field(default_factory=tuple)
+
+    @property
+    def is_metric(self) -> bool:
+        """True if the column dimensions are specified in SI metric units (mm)."""
+        return self.section.width_in >= 100.0 or self.section.depth_in >= 100.0
 
 
 @dataclass(frozen=True)
@@ -667,47 +950,130 @@ class StaircaseData:
         cls,
         *,
         name: str = "ST1",
-        flight_width_mm: float = 1200.0,
-        riser_mm: float = 150.0,
-        tread_mm: float = 300.0,
+        flight_width: float | None = None,
+        riser: float | None = None,
+        tread: float | None = None,
         num_risers: int = 12,
-        waist_mm: float = 190.0,
-        cover_mm: float = 30.0,
-        bottom_landing_mm: float = 1915.0,
-        top_landing_mm: float = 285.0,
-        beam_left_w_mm: float = 230.0,
-        beam_left_h_mm: float = 350.0,
-        beam_right_w_mm: float = 350.0,
-        beam_right_h_mm: float = 550.0,
-        main_bar_dia_mm: float = 12.0,
-        main_bar_spacing_mm: float = 125.0,
-        dist_bar_dia_mm: float = 10.0,
-        dist_bar_spacing_mm: float = 150.0,
-        nosing_bar_dia_mm: float = 8.0,
+        waist: float | None = None,
+        cover: float | None = None,
+        bottom_landing: float | None = None,
+        top_landing: float | None = None,
+        beam_left_w: float | None = None,
+        beam_left_h: float | None = None,
+        beam_right_w: float | None = None,
+        beam_right_h: float | None = None,
+        main_bar_dia: float | None = None,
+        main_bar_spacing: float | None = None,
+        dist_bar_dia: float | None = None,
+        dist_bar_spacing: float | None = None,
+        nosing_bar_dia: float | None = None,
         landings: int = 1,
     ) -> StaircaseData:
-        """Construct StaircaseData directly from SI metric parameters (in mm)."""
-        going_mm = (num_risers - 1) * tread_mm
+        """Construct StaircaseData directly from SI metric parameters."""
+        _flight_width = flight_width if flight_width is not None else 1200.0
+        _riser = riser if riser is not None else 150.0
+        _tread = tread if tread is not None else 300.0
+        _waist = waist if waist is not None else 190.0
+        _cover = cover if cover is not None else 30.0
+        _bottom_landing = bottom_landing if bottom_landing is not None else 1915.0
+        _top_landing = top_landing if top_landing is not None else 285.0
+        _beam_left_w = beam_left_w if beam_left_w is not None else 230.0
+        _beam_left_h = beam_left_h if beam_left_h is not None else 350.0
+        _beam_right_w = beam_right_w if beam_right_w is not None else 350.0
+        _beam_right_h = beam_right_h if beam_right_h is not None else 550.0
+        _main_bar_dia = main_bar_dia if main_bar_dia is not None else 12.0
+        _main_bar_spacing = main_bar_spacing if main_bar_spacing is not None else 125.0
+        _dist_bar_dia = dist_bar_dia if dist_bar_dia is not None else 10.0
+        _dist_bar_spacing = dist_bar_spacing if dist_bar_spacing is not None else 150.0
+        _nosing_bar_dia = nosing_bar_dia if nosing_bar_dia is not None else 8.0
+
+        going_mm = (num_risers - 1) * _tread
         return cls(
             name=name,
-            flight_width_in=flight_width_mm,
+            flight_width_in=_flight_width,
             flight_length_in=going_mm,
-            riser_height_in=riser_mm,
-            tread_depth_in=tread_mm,
+            riser_height_in=_riser,
+            tread_depth_in=_tread,
             num_risers=num_risers,
-            slab_thickness_in=waist_mm,
-            cover_in=cover_mm,
-            bottom_landing_depth_in=bottom_landing_mm,
-            top_landing_depth_in=top_landing_mm,
-            beam_left_width_in=beam_left_w_mm,
-            beam_left_depth_in=beam_left_h_mm,
-            beam_right_width_in=beam_right_w_mm,
-            beam_right_depth_in=beam_right_h_mm,
-            main_bar_dia_in=main_bar_dia_mm,
-            main_bar_spacing_in=main_bar_spacing_mm,
-            dist_bar_dia_in=dist_bar_dia_mm,
-            dist_bar_spacing_in=dist_bar_spacing_mm,
-            nosing_bar_dia_in=nosing_bar_dia_mm,
+            slab_thickness_in=_waist,
+            cover_in=_cover,
+            bottom_landing_depth_in=_bottom_landing,
+            top_landing_depth_in=_top_landing,
+            beam_left_width_in=_beam_left_w,
+            beam_left_depth_in=_beam_left_h,
+            beam_right_width_in=_beam_right_w,
+            beam_right_depth_in=_beam_right_h,
+            main_bar_dia_in=_main_bar_dia,
+            main_bar_spacing_in=_main_bar_spacing,
+            dist_bar_dia_in=_dist_bar_dia,
+            dist_bar_spacing_in=_dist_bar_spacing,
+            nosing_bar_dia_in=_nosing_bar_dia,
+            landings=landings,
+        )
+
+    @classmethod
+    def from_imperial(
+        cls,
+        *,
+        name: str = "ST1",
+        flight_width: float | None = None,
+        riser: float | None = None,
+        tread: float | None = None,
+        num_risers: int = 11,
+        waist: float | None = None,
+        cover: float | None = None,
+        bottom_landing: float | None = None,
+        top_landing: float | None = None,
+        beam_left_w: float | None = None,
+        beam_left_h: float | None = None,
+        beam_right_w: float | None = None,
+        beam_right_h: float | None = None,
+        main_bar_dia: float | None = None,
+        main_bar_spacing: float | None = None,
+        dist_bar_dia: float | None = None,
+        dist_bar_spacing: float | None = None,
+        nosing_bar_dia: float | None = None,
+        landings: int = 1,
+    ) -> StaircaseData:
+        """Construct StaircaseData directly from Imperial parameters (in inches)."""
+        _flight_width = flight_width if flight_width is not None else 48.0
+        _riser = riser if riser is not None else 6.0
+        _tread = tread if tread is not None else 12.0
+        _waist = waist if waist is not None else 7.5
+        _cover = cover if cover is not None else 1.2
+        _bottom_landing = bottom_landing if bottom_landing is not None else 60.0
+        _top_landing = top_landing if top_landing is not None else 12.0
+        _beam_left_w = beam_left_w if beam_left_w is not None else 9.0
+        _beam_left_h = beam_left_h if beam_left_h is not None else 14.0
+        _beam_right_w = beam_right_w if beam_right_w is not None else 14.0
+        _beam_right_h = beam_right_h if beam_right_h is not None else 22.0
+        _main_bar_dia = main_bar_dia if main_bar_dia is not None else 0.5
+        _main_bar_spacing = main_bar_spacing if main_bar_spacing is not None else 5.0
+        _dist_bar_dia = dist_bar_dia if dist_bar_dia is not None else 0.375
+        _dist_bar_spacing = dist_bar_spacing if dist_bar_spacing is not None else 6.0
+        _nosing_bar_dia = nosing_bar_dia if nosing_bar_dia is not None else 0.3125
+
+        going = (num_risers - 1) * _tread
+        return cls(
+            name=name,
+            flight_width_in=_flight_width,
+            flight_length_in=going,
+            riser_height_in=_riser,
+            tread_depth_in=_tread,
+            num_risers=num_risers,
+            slab_thickness_in=_waist,
+            cover_in=_cover,
+            bottom_landing_depth_in=_bottom_landing,
+            top_landing_depth_in=_top_landing,
+            beam_left_width_in=_beam_left_w,
+            beam_left_depth_in=_beam_left_h,
+            beam_right_width_in=_beam_right_w,
+            beam_right_depth_in=_beam_right_h,
+            main_bar_dia_in=_main_bar_dia,
+            main_bar_spacing_in=_main_bar_spacing,
+            dist_bar_dia_in=_dist_bar_dia,
+            dist_bar_spacing_in=_dist_bar_spacing,
+            nosing_bar_dia_in=_nosing_bar_dia,
             landings=landings,
         )
 
@@ -737,6 +1103,11 @@ class SlabData:
     cover_in: float = 0.75
     top_bar: Rebar | None = None
     bottom_bar: Rebar | None = None
+
+    @property
+    def is_metric(self) -> bool:
+        """True if the slab dimensions are specified in SI metric units (mm)."""
+        return self.thickness_in >= 50.0 or self.width_in >= 500.0
 
 
 # ---------------------------------------------------------------------------

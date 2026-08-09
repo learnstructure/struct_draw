@@ -66,14 +66,56 @@ class TestBeamProfile(unittest.TestCase):
         data = BeamProfileData.from_metric(
             name="PB-1",
             grid_line_name="A-A",
-            spans_mm=[5500.0, 4000.0, 3000.0, 4000.0, 5500.0],
-            col_width_mm=450.0,
-            beam_depth_mm=450.0,
-            cover_mm=40.0,
+            spans=[5500.0, 4000.0, 3000.0, 4000.0, 5500.0],
+            col_width=450.0,
+            beam_depth=450.0,
+            cover=40.0,
         )
         self.assertTrue(data.is_metric)
         self.assertEqual(len(data.spans_in), 5)
         self.assertEqual(data.col_width_in, 450.0)
+
+    def test_beam_profile_from_metric_invalid_alias_raises(self):
+        with self.assertRaises(TypeError):
+            BeamProfileData.from_metric(
+                name="PB-1",
+                spans_mm=[5500.0, 4000.0],  # type: ignore
+            )
+
+    def test_beam_profile_from_imperial(self):
+        data = BeamProfileData.from_imperial(
+            name="PB-1",
+            grid_line_name="A-A",
+            spans=[216.0, 160.0, 120.0, 160.0, 216.0],
+            col_width=18.0,
+            beam_depth=18.0,
+            cover=1.5,
+        )
+        self.assertFalse(data.is_metric)
+        self.assertEqual(len(data.spans_in), 5)
+        self.assertEqual(data.col_width_in, 18.0)
+
+    def test_footing_from_imperial(self):
+        from struct_draw.core.data import FootingData
+        footing = FootingData.from_imperial(
+            name="F1",
+            length=72.0,
+            width=72.0,
+            mid_thick=18.0,
+            edge_thick=10.0,
+            col_width=16.0,
+            col_depth=16.0,
+            col_height=96.0,
+            fd_depth=60.0,
+            pl_height=24.0,
+            cover=3.0,
+            bar_dia=0.625,
+            bar_spacing=6.0,
+            ld=24.0,
+        )
+        self.assertFalse(footing.is_metric)
+        self.assertEqual(footing.length_in, 72.0)
+        self.assertEqual(footing.mid_thickness_in, 18.0)
 
     def test_profile_view_drawing(self):
         data = BeamProfileData.from_metric()
