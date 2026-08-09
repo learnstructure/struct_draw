@@ -17,6 +17,7 @@ from typing import Any
 
 from struct_draw.core.data import (
     BeamData,
+    BeamProfileData,
     ColumnData,
     CombinedFootingData,
     FootingData,
@@ -27,6 +28,7 @@ from struct_draw.core.data import (
 from struct_draw.core.document import new_drawing, register_all_styles
 from struct_draw.elements import (
     beam,
+    beam_profile,
     column,
     combined_footing,
     footing,
@@ -137,6 +139,9 @@ def _render_dxf(data: Any) -> DrawingResult:
     if isinstance(data, BeamData):
         beam.section_view(msp, data)
         metadata["view"] = "section"
+    elif isinstance(data, BeamProfileData):
+        beam_profile.drawing(msp, data)
+        metadata["views"] = ["profile", "section"]
     elif isinstance(data, FootingData):
         footing.section_view(msp, data)
         footing_margin = 800.0 if is_metric else 35.0

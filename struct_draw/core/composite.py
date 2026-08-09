@@ -109,7 +109,8 @@ def draw_stirrup_hooked(
     """Draw a stirrup with realistic parallel 135° hooks turning into the concrete core.
 
     The hooks extend at 135° inward from corner(s) into the beam/column core.
-    The two legs are drawn parallel to each other wrapping around the corner rebar.
+    The two legs start from the vertical and horizontal stirrup sides to flank
+    the corner rebar cleanly.
     """
     x0, y0 = origin
     base = draw_stirrup(target, width=width, height=height, origin=origin, layer=layer)
@@ -119,20 +120,21 @@ def draw_stirrup_hooked(
     dx = hook_length * 0.7071
     dy = hook_length * 0.7071
     gap = max(0.2, hook_length * 0.12)
+    d_offset = max(gap, hook_length * 0.15)
 
     if corner in ("top_left", "all", "top_both"):
-        p1_start = (x0, y0 + height)
-        p1_end = (x0 + dx, y0 + height - dy)
-        p2_start = (x0 + gap, y0 + height)
-        p2_end = (x0 + gap + dx, y0 + height - dy)
+        p1_start = (x0, y0 + height - d_offset)
+        p1_end = (x0 + dx, y0 + height - d_offset - dy)
+        p2_start = (x0 + d_offset, y0 + height)
+        p2_end = (x0 + d_offset + dx, y0 + height - dy)
         out.append(draw_line(target, p1_start, p1_end, layer=layer))
         out.append(draw_line(target, p2_start, p2_end, layer=layer))
 
     if corner in ("top_right", "all", "top_both"):
-        p1_start = (x0 + width, y0 + height)
-        p1_end = (x0 + width - dx, y0 + height - dy)
-        p2_start = (x0 + width - gap, y0 + height)
-        p2_end = (x0 + width - gap - dx, y0 + height - dy)
+        p1_start = (x0 + width, y0 + height - d_offset)
+        p1_end = (x0 + width - dx, y0 + height - d_offset - dy)
+        p2_start = (x0 + width - d_offset, y0 + height)
+        p2_end = (x0 + width - d_offset - dx, y0 + height - dy)
         out.append(draw_line(target, p1_start, p1_end, layer=layer))
         out.append(draw_line(target, p2_start, p2_end, layer=layer))
 

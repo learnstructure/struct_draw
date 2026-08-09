@@ -158,6 +158,140 @@ class BeamData:
 
 
 @dataclass(frozen=True)
+class BeamProfileSpan:
+    """Description of a single span in a multi-span continuous beam profile.
+
+    Attributes
+    ----------
+    length_in
+        Clear or center-to-center span length (inches or mm).
+    support_stirrup_spacing_in
+        Stirrup spacing near supports (inches or mm).
+    mid_stirrup_spacing_in
+        Stirrup spacing in mid-span region (inches or mm).
+    top_extra_bars
+        Sequence of Rebar for top support reinforcement.
+    bottom_bars
+        Sequence of Rebar for bottom flexural reinforcement.
+    """
+
+    length_in: float = 216.0
+    support_stirrup_spacing_in: float = 4.0
+    mid_stirrup_spacing_in: float = 6.0
+    top_extra_bars: Sequence[Rebar] = field(default_factory=tuple)
+    bottom_bars: Sequence[Rebar] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class BeamProfileData:
+    """All information needed to draw a continuous multi-span beam profile (longitudinal section).
+
+    Attributes
+    ----------
+    name
+        Beam profile identifier (e.g. ``"L-SECTION OF BEAM ALONG GRIDS A-A"``).
+    grid_line_name
+        Grid line label (e.g. ``"A-A"``).
+    spans_in
+        Sequence of span lengths (in inches or mm). Default corresponds to SI metric 5.5m, 4m, 3m, 4m, 5.5m.
+    col_width_in
+        Column width at supports (inches or mm).
+    beam_width_in
+        Beam cross-section width (inches or mm).
+    beam_depth_in
+        Beam cross-section depth/height (inches or mm).
+    cover_in
+        Concrete clear cover (inches or mm).
+    col_extension_in
+        Column vertical extension above/below the beam (inches or mm).
+    grid_extension_in
+        Grid line extension beyond column top (inches or mm).
+    grid_labels
+        Custom grid labels tuple (e.g. ``("A", "B", "C", "D", "E", "F")``). If empty, auto-generated A, B, C...
+    level_text
+        Level marker text label (e.g. ``"PL+3.0 m"``).
+    top_bars
+        Sequence of Rebar for continuous top longitudinal reinforcement.
+    bottom_bars
+        Sequence of Rebar for continuous bottom longitudinal reinforcement.
+    top_extra_bars
+        Sequence of Rebar for top support reinforcement over columns.
+    stirrup
+        Stirrup description.
+    support_stirrup_spacing_in
+        Default stirrup spacing near support zones (inches or mm).
+    mid_stirrup_spacing_in
+        Default stirrup spacing in mid-span zones (inches or mm).
+    """
+
+    name: str = "B1"
+    grid_line_name: str = "A-A"
+    spans_in: Sequence[float] = (216.0, 180.0, 216.0)
+    col_width_in: float = 18.0
+    beam_width_in: float = 18.0
+    beam_depth_in: float = 18.0
+    cover_in: float = 1.5
+    col_extension_in: float = 38.0
+    grid_extension_in: float = 60.0
+    grid_labels: Sequence[str] = field(default_factory=tuple)
+    level_text: str = "PL+3.0 m"
+    top_bars: Sequence[Rebar] = field(default_factory=tuple)
+    bottom_bars: Sequence[Rebar] = field(default_factory=tuple)
+    top_extra_bars: Sequence[Rebar] = field(default_factory=tuple)
+    stirrup: Stirrup = field(default_factory=Stirrup)
+    support_stirrup_spacing_in: float = 4.0
+    mid_stirrup_spacing_in: float = 6.0
+
+    @property
+    def is_metric(self) -> bool:
+        """True if dimensions are specified in SI metric units (mm)."""
+        return self.beam_depth_in >= 100.0 or (len(self.spans_in) > 0 and self.spans_in[0] >= 300.0)
+
+    @classmethod
+    def from_metric(
+        cls,
+        *,
+        name: str = "PB-1",
+        grid_line_name: str = "A-A",
+        spans_mm: Sequence[float] = (5500.0, 4000.0, 3000.0, 4000.0, 5500.0),
+        col_width_mm: float = 450.0,
+        beam_width_mm: float = 450.0,
+        beam_depth_mm: float = 450.0,
+        cover_mm: float = 40.0,
+        col_extension_mm: float = 975.0,
+        grid_extension_mm: float = 1500.0,
+        grid_labels: Sequence[str] = (),
+        level_text: str = "PL+3.0 m",
+        top_bars: Sequence[Rebar] = (),
+        bottom_bars: Sequence[Rebar] = (),
+        top_extra_bars: Sequence[Rebar] = (),
+        stirrup: Stirrup | None = None,
+        support_stirrup_spacing_mm: float = 100.0,
+        mid_stirrup_spacing_mm: float = 150.0,
+    ) -> BeamProfileData:
+        """Construct BeamProfileData directly from SI metric parameters (in mm)."""
+        return cls(
+            name=name,
+            grid_line_name=grid_line_name,
+            spans_in=tuple(spans_mm),
+            col_width_in=col_width_mm,
+            beam_width_in=beam_width_mm,
+            beam_depth_in=beam_depth_mm,
+            cover_in=cover_mm,
+            col_extension_in=col_extension_mm,
+            grid_extension_in=grid_extension_mm,
+            grid_labels=tuple(grid_labels),
+            level_text=level_text,
+            top_bars=top_bars,
+            bottom_bars=bottom_bars,
+            top_extra_bars=top_extra_bars,
+            stirrup=stirrup or Stirrup(size="10mm dia", spacing_in=100.0),
+            support_stirrup_spacing_in=support_stirrup_spacing_mm,
+            mid_stirrup_spacing_in=mid_stirrup_spacing_mm,
+        )
+
+
+@dataclass(frozen=True)
 class FootingData:
     """All information needed to draw a spread footing (section + plan).
 
@@ -614,6 +748,7 @@ class MemberType(str, Enum):
     """The structural-member type a :class:`BeamData` / :class:`FootingData` / ... carries."""
 
     BEAM = "beam"
+    BEAM_PROFILE = "beam_profile"
     FOOTING = "footing"
     COMBINED_FOOTING = "combined_footing"
     COLUMN = "column"
@@ -628,6 +763,8 @@ __all__ = [
     "ScheduleRow",
     "GeometrySection",
     "BeamData",
+    "BeamProfileSpan",
+    "BeamProfileData",
     "FootingData",
     "CombinedFootingData",
     "ColumnData",

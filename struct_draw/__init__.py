@@ -43,6 +43,8 @@ from struct_draw.backends import DrawingResult, render, save_dxf
 # Data classes (commonly used).
 from struct_draw.core.data import (
     BeamData,
+    BeamProfileData,
+    BeamProfileSpan,
     ColumnData,
     CombinedFootingData,
     FootingData,
@@ -64,6 +66,8 @@ __all__ = [
     "save_dxf",
     # Data
     "BeamData",
+    "BeamProfileData",
+    "BeamProfileSpan",
     "ColumnData",
     "CombinedFootingData",
     "FootingData",

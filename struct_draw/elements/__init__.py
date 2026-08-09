@@ -11,6 +11,7 @@ only :mod:`struct_draw.core.data` dataclass fields and call into
 Public modules:
 
 * :mod:`struct_draw.elements.beam` — section + elevation views
+* :mod:`struct_draw.elements.beam_profile` — multi-span continuous beam profile views
 * :mod:`struct_draw.elements.column` — section + elevation views
 * :mod:`struct_draw.elements.footing` — plan + section views
 * :mod:`struct_draw.elements.staircase` — plan + section views
@@ -19,6 +20,7 @@ Public modules:
 
 from struct_draw.elements import (  # noqa: F401
     beam,
+    beam_profile,
     column,
     combined_footing,
     footing,
@@ -26,4 +28,4 @@ from struct_draw.elements import (  # noqa: F401
     staircase,
 )
 
-__all__ = ["beam", "column", "combined_footing", "footing", "slab", "staircase"]
+__all__ = ["beam", "beam_profile", "column", "combined_footing", "footing", "slab", "staircase"]
