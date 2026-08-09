@@ -289,17 +289,58 @@ def section_view(
     ext1_end = (P_j1_top[0] + Ld * math.cos(theta), P_j1_top[1] + Ld * math.sin(theta))
     draw_line(target, P_j1_top, ext1_end, layer="Rebar")
 
-    # Ext 2: past P_j1_bot left into bottom landing
-    ext2_end = (P_j1_bot[0] - Ld, P_j1_bot[1])
-    draw_line(target, P_j1_bot, ext2_end, layer="Rebar")
-
-    # Ext 3: past P_j2_top right into top landing
-    ext3_end = (P_j2_top[0] + Ld, P_j2_top[1])
-    draw_line(target, P_j2_top, ext3_end, layer="Rebar")
-
     # Ext 4: past P_j2_bot down-left into waist soffit
     ext4_end = (P_j2_bot[0] - Ld * math.cos(theta), P_j2_bot[1] - Ld * math.sin(theta))
     draw_line(target, P_j2_bot, ext4_end, layer="Rebar")
+
+    # -----------------------------------------------------------------------
+    # 4b. Extra Support Bars (Secondary Rebar Layer)
+    # -----------------------------------------------------------------------
+    extra_off = cover + main_dia + dist_dia + (5.0 if is_metric else 0.2)
+
+    # Lower end extra bar (above bottom transverse bars at lower end of flight)
+    y_extra_bot = oy - waist + extra_off
+    dx_soffit_extra = (waist - extra_off) * math.sin(theta)
+    dy_soffit_extra = -(waist - extra_off) * math.cos(theta)
+    x_bot_junc = (ox + d1 + dx_soffit_extra) + (-waist + extra_off - dy_soffit_extra) / tan_t if tan_t > 0 else ox + d1
+    P_bot_extra_junc = (x_bot_junc, y_extra_bot)
+
+    p_bot_extra_sloped_end = (
+        P_bot_extra_junc[0] + Ld * math.cos(theta),
+        P_bot_extra_junc[1] + Ld * math.sin(theta),
+    )
+    p_bot_extra_landing_end = (
+        P_bot_extra_junc[0] - Ld,
+        y_extra_bot,
+    )
+    extra_bot_pts = [
+        p_bot_extra_landing_end,
+        P_bot_extra_junc,
+        p_bot_extra_sloped_end,
+    ]
+    draw_polyline(target, extra_bot_pts, close=False, layer="Rebar")
+
+    # Upper end extra bar (below top transverse bars at upper end of flight)
+    y_extra_top = oy + height - extra_off
+    dx_extra_top = extra_off * math.sin(theta)
+    dy_extra_top = -extra_off * math.cos(theta)
+    x_top_junc = (ox + d1 + dx_extra_top) + (height - extra_off - dy_extra_top) / tan_t if tan_t > 0 else ox + grid - d2
+    P_top_extra_junc = (x_top_junc, y_extra_top)
+
+    p_top_extra_sloped_end = (
+        P_top_extra_junc[0] - Ld * math.cos(theta),
+        P_top_extra_junc[1] - Ld * math.sin(theta),
+    )
+    p_top_extra_landing_end = (
+        P_top_extra_junc[0] + Ld,
+        y_extra_top,
+    )
+    extra_top_pts = [
+        p_top_extra_sloped_end,
+        P_top_extra_junc,
+        p_top_extra_landing_end,
+    ]
+    draw_polyline(target, extra_top_pts, close=False, layer="Rebar")
 
     # -----------------------------------------------------------------------
     # 5. Distribution Reinforcement (Transverse Dots Aligned with Waist)
@@ -367,7 +408,7 @@ def section_view(
     drop_top = (150.0 if is_metric else 6.0)
 
     # Extra bar callouts (top and bottom)
-    pm1 = ext3_end
+    pm1 = (P_top_extra_junc[0] - Ld * 0.5 * math.cos(theta), P_top_extra_junc[1] - Ld * 0.5 * math.sin(theta))
     draw_leader(
         target,
         [
@@ -380,13 +421,13 @@ def section_view(
         layer="Text",
     )
 
-    pm2 = ext2_end
+    pm2 = (P_bot_extra_junc[0] + Ld * 0.5 * math.cos(theta), P_bot_extra_junc[1] + Ld * 0.5 * math.sin(theta))
     draw_leader(
         target,
         [
             pm2,
-            (pm2[0] + (100.0 if is_metric else 4.0), pm2[1] - drop_top),
-            (pm2[0] + (250.0 if is_metric else 10.0), pm2[1] - drop_top),
+            (pm2[0] - (100.0 if is_metric else 4.0), pm2[1] + drop_top),
+            (pm2[0] - (250.0 if is_metric else 10.0), pm2[1] + drop_top),
         ],
         text=f"Extra bar: {_format_rebar_size(main_dia, is_metric)} @ {_format_dim(main_spacing, is_metric, include_unit=is_metric)} c/c\nMaintain Ld on both sides",
         text_height=st_sz,
@@ -468,7 +509,7 @@ def section_view(
     title_cx = ox + grid / 2.0
     title_y = oy - ext_bot - (250.0 if is_metric else 10.0)
 
-    t1_str = f"{stair.name} - FIRST FLIGHT SECTION"
+    t1_str = f"{stair.name} SECTION A-A"
     draw_text(
         target,
         t1_str,
@@ -611,7 +652,7 @@ def plan_view(
     draw_text(target, "UP", position=(p_start[0] + (100.0 if is_metric else 4.0), y_f1_center + (40.0 if is_metric else 1.5)), height=st_sz, layer="Text")
 
     # 5. Section Cut Line A-A across plan
-    sec_y = y_f1_center
+    sec_y = y_fl1_bot + flight_w * 0.15
     sec_x1 = ox - (250.0 if is_metric else 10.0)
     sec_x2 = ox + total_l + (250.0 if is_metric else 10.0)
     draw_line(target, (sec_x1, sec_y), (sec_x2, sec_y), layer="SECTION")

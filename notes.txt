@@ -1,0 +1,1 @@
+"This repository is a pure Python library and backend suite. There is no React frontend or web dev server. Do NOT attempt to run npm start, npm run dev, or start a web server. Run tests using pytest or execute standalone Python example scripts directly."

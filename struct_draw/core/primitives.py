@@ -126,9 +126,13 @@ def draw_text(
     style: str | None = None,
     layer: str = "TEXT",
 ) -> Any:
-    """Draw a single-line TEXT entity."""
+    """Draw a single-line TEXT entity or MTEXT entity if text contains line breaks."""
     if not text:
         raise DrawError("draw_text requires non-empty text.")
+    if "\n" in text:
+        return draw_mtext(
+            target, text, position=position, height=height, style=style, layer=layer
+        )
     attribs: dict[str, Any] = {"layer": layer, "height": height, "rotation": rotation}
     if style:
         attribs["style"] = style
@@ -140,7 +144,7 @@ def draw_mtext(
     text: str,
     *,
     position: tuple[float, float],
-    width: float = 4.0,
+    width: float = 0.0,
     height: float = 0.10,
     style: str | None = None,
     layer: str = "TEXT",
@@ -148,14 +152,12 @@ def draw_mtext(
     """Draw an MTEXT (multi-line text) entity."""
     if not text:
         raise DrawError("draw_mtext requires non-empty text.")
-    attribs: dict[str, Any] = {"layer": layer}
+    attribs: dict[str, Any] = {"layer": layer, "char_height": height}
     if style:
         attribs["style"] = style
     mtext = target.add_mtext(text, dxfattribs=attribs)
-    mtext.set_location(position, leader=False)
-    if height:
-        mtext.dxf.char_height = height
-    if width:
+    mtext.set_location(position)
+    if width > 0:
         mtext.dxf.width = width
     return mtext
 
@@ -318,9 +320,51 @@ def draw_leader(
     text_height: float = 0.20,
     layer: str = "LEADER",
 ) -> Any:
-    """Draw a multi-vertex leader with optional annotation text."""
+    """Draw a multi-vertex leader with optional annotation text as an AutoCAD MULTILEADER."""
     if len(vertices) < 2:
         raise DrawError("draw_leader requires at least two vertices.")
+
+    if text and hasattr(target, "add_multileader_mtext"):
+        try:
+            from ezdxf.math import Vec2
+            from ezdxf.render import mleader
+
+            target_pt = vertices[0]
+            text_pt = vertices[-1]
+
+            ml_builder = target.add_multileader_mtext("Standard")
+            if hasattr(ml_builder, "multileader") and hasattr(ml_builder.multileader, "dxf"):
+                ml_builder.multileader.dxf.layer = layer
+
+            if text_pt[0] >= target_pt[0]:
+                side = mleader.ConnectionSide.left
+                align = mleader.TextAlignment.left
+            else:
+                side = mleader.ConnectionSide.right
+                align = mleader.TextAlignment.right
+
+            clean_t = text.replace("φ", "mm dia").replace("Φ", "mm dia").replace("ϕ", "mm dia")
+            ml_builder.set_content(
+                clean_t,
+                char_height=text_height,
+                alignment=align,
+            )
+            if arrow_size > 0:
+                try:
+                    ml_builder.set_arrow_properties(size=arrow_size)
+                except Exception:
+                    pass
+
+            if len(vertices) > 2:
+                line_verts = [Vec2(v) for v in vertices[:-1]]
+            else:
+                line_verts = [Vec2(vertices[0])]
+
+            ml_builder.add_leader_line(side, line_verts)
+            return ml_builder.build(insert=Vec2(text_pt))
+        except Exception:
+            pass
+
     leader = target.add_leader(vertices=list(vertices), dxfattribs={"layer": layer})
     if arrow_size and hasattr(leader, "dxf") and hasattr(leader.dxf, "arrow_size"):
         try:
