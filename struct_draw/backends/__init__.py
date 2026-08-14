@@ -21,9 +21,13 @@ from struct_draw.core.data import (
     ColumnData,
     CombinedFootingData,
     FootingData,
+    FrameElevationData,
+    FramingPlanData,
+    GeneralFrameData,
     MemberType,
     SlabData,
     StaircaseData,
+    TrussData,
 )
 from struct_draw.core.document import new_drawing, register_all_styles
 from struct_draw.elements import (
@@ -32,6 +36,7 @@ from struct_draw.elements import (
     column,
     combined_footing,
     footing,
+    general_frame,
     slab,
     staircase,
 )
@@ -69,6 +74,11 @@ class DrawingResult:
     backend: str
     document: Any
     metadata: dict[str, Any]
+
+    @property
+    def doc(self) -> Any:
+        """Alias for document."""
+        return self.document
 
     def save(self, path: str | Path) -> Path:
         """Persist the drawing to ``path`` (delegates to the backend)."""
@@ -155,10 +165,8 @@ def _render_dxf(data: Any) -> DrawingResult:
         combined_footing.plan_view(msp, data, origin=(0.0, y_offset))
         metadata["views"] = ["section", "plan"]
     elif isinstance(data, ColumnData):
-        column.section_view(msp, data)
-        y_offset = -2500.0 if is_metric else -100.0
-        column.elevation_view(msp, data, origin=(0.0, y_offset))
-        metadata["views"] = ["section", "elevation"]
+        column.drawing(msp, data)
+        metadata["views"] = ["elevation", "section"]
     elif isinstance(data, StaircaseData):
         staircase.section_view(msp, data)
         staircase_margin = 1500.0 if is_metric else 60.0
@@ -171,11 +179,24 @@ def _render_dxf(data: Any) -> DrawingResult:
         y_offset = -(data.width_in + slab_margin)
         slab.section_view(msp, data, origin=(0.0, y_offset))
         metadata["views"] = ["plan", "section"]
+    elif isinstance(data, FramingPlanData):
+        general_frame.plan_view(msp, data)
+        metadata["view"] = "framing_plan"
+    elif isinstance(data, FrameElevationData):
+        general_frame.elevation_view(msp, data)
+        metadata["view"] = "frame_elevation"
+    elif isinstance(data, TrussData):
+        general_frame.truss_view(msp, data)
+        metadata["view"] = "truss_outline"
+    elif isinstance(data, GeneralFrameData):
+        general_frame.drawing(msp, data)
+        metadata["view"] = data.view_mode
     else:
         raise BackendError(
             f"Unsupported data type: {type(data).__name__}. "
-            f"Expected one of: BeamData, FootingData, ColumnData, "
-            f"StaircaseData, SlabData."
+            f"Expected one of: BeamData, BeamProfileData, FootingData, "
+            f"CombinedFootingData, ColumnData, StaircaseData, SlabData, "
+            f"GeneralFrameData, FramingPlanData, FrameElevationData, TrussData."
         )
 
     return DrawingResult(backend="dxf", document=doc, metadata=metadata)

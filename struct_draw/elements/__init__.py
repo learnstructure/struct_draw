@@ -24,8 +24,18 @@ from struct_draw.elements import (  # noqa: F401
     column,
     combined_footing,
     footing,
+    general_frame,
     slab,
     staircase,
 )
 
-__all__ = ["beam", "beam_profile", "column", "combined_footing", "footing", "slab", "staircase"]
+__all__ = [
+    "beam",
+    "beam_profile",
+    "column",
+    "combined_footing",
+    "footing",
+    "general_frame",
+    "slab",
+    "staircase",
+]

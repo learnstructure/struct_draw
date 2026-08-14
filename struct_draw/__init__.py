@@ -38,6 +38,10 @@ Public entry points:
 from struct_draw.version import __version__
 
 # Top-level entry points.
+from struct_draw.adapters.struct_core_adapter import (
+    draw_from_core,
+    draw_general_frame_from_core,
+)
 from struct_draw.backends import DrawingResult, render, save_dxf
 
 # Data classes (commonly used).
@@ -48,6 +52,13 @@ from struct_draw.core.data import (
     ColumnData,
     CombinedFootingData,
     FootingData,
+    FrameElevationData,
+    FrameGridLine,
+    FrameLevelLine,
+    FrameMember,
+    FrameNode,
+    FramingPlanData,
+    GeneralFrameData,
     GeometrySection,
     MemberType,
     Rebar,
@@ -55,6 +66,7 @@ from struct_draw.core.data import (
     SlabData,
     StaircaseData,
     Stirrup,
+    TrussData,
 )
 
 
@@ -64,6 +76,8 @@ __all__ = [
     "DrawingResult",
     "render",
     "save_dxf",
+    "draw_from_core",
+    "draw_general_frame_from_core",
     # Data
     "BeamData",
     "BeamProfileData",
@@ -71,6 +85,13 @@ __all__ = [
     "ColumnData",
     "CombinedFootingData",
     "FootingData",
+    "FrameElevationData",
+    "FrameGridLine",
+    "FrameLevelLine",
+    "FrameMember",
+    "FrameNode",
+    "FramingPlanData",
+    "GeneralFrameData",
     "GeometrySection",
     "MemberType",
     "Rebar",
@@ -78,4 +99,5 @@ __all__ = [
     "SlabData",
     "StaircaseData",
     "Stirrup",
+    "TrussData",
 ]

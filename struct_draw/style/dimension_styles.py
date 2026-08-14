@@ -92,6 +92,7 @@ def default_registry(is_metric: bool = True) -> DimensionStyleRegistry:
     ext = 50.0 if is_metric else 2.0
     fxl = 50.0 if is_metric else 2.0
     reg.add(DimensionStyle("Linear",    text_style="Dimension", arrow_kind=ArrowheadKind.FILLED_TRIANGLE, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))
+    reg.add(DimensionStyle("Metric",    text_style="Dimension", arrow_kind=ArrowheadKind.FILLED_TRIANGLE, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))
     reg.add(DimensionStyle("Dimension", text_style="Dimension", arrow_kind=ArrowheadKind.FILLED_TRIANGLE, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))
     reg.add(DimensionStyle("Angular",   text_style="Dimension", arrow_kind=ArrowheadKind.FILLED_TRIANGLE, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))
     reg.add(DimensionStyle("Radial",    text_style="Dimension", arrow_kind=ArrowheadKind.OPEN_ARROW, text_height=th, arrow_size=asz, extension_offset=ext, extension_extension=ext, fixed_extension_len=fxl))

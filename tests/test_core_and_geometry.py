@@ -124,3 +124,174 @@ def test_geometry_union_box() -> None:
 def test_geometry_polyline_length() -> None:
     pts = [(0, 0), (3, 0), (3, 4)]
     assert is_close(polyline_length(pts), 7.0)
+
+
+def test_column_drawing_dynamic_positioning() -> None:
+    from struct_draw.core import ColumnData
+    from struct_draw.elements import column
+
+    class Target:
+        def __init__(self):
+            self.entities = []
+        def add_line(self, *a, **k): self.entities.append(('line', a, k))
+        def add_lwpolyline(self, *a, **k): self.entities.append(('poly', a, k))
+        def add_text(self, *a, **k): self.entities.append(('text', a, k))
+        def add_circle(self, *a, **k): self.entities.append(('circle', a, k))
+        def add_linear_dim(self, *a, **k):
+            class Dim:
+                def set_text(self, *a, **k): pass
+                def render(self): pass
+            self.entities.append(('dim', a, k))
+            return Dim()
+
+    col = ColumnData(
+        name="C1",
+        section=GeometrySection(width_in=18.0, depth_in=18.0, cover_in=1.5),
+        height_in=120.0,
+        longitudinal_bars=(Rebar(mark="C1", size="#8", quantity=4),),
+        stirrups=Stirrup(size="#3", spacing_in=6.0),
+    )
+
+    t = Target()
+    res = column.drawing(t, col, origin=(0.0, 0.0), layout="side_by_side")
+    elev_bbox = res["elevation"]["bounding_box"]
+    sec_bbox = res["section"]["bounding_box"]
+    assert sec_bbox[0] >= elev_bbox[2], "Section view X min must be >= Elevation view X max"
+
+    t2 = Target()
+    res_st = column.drawing(t2, col, origin=(0.0, 0.0), layout="stacked")
+    elev_bbox2 = res_st["elevation"]["bounding_box"]
+    sec_bbox2 = res_st["section"]["bounding_box"]
+    assert sec_bbox2[1] >= elev_bbox2[3], "Stacked Section view Y min must be >= Elevation view Y max"
+
+
+def test_layer_title_color_visibility() -> None:
+    from struct_draw.style.layers import default_registry
+    reg = default_registry()
+    title_layer = reg.get("TITLE")
+    assert title_layer is not None
+    assert title_layer.color != 5, f"TITLE layer color must not be blue (5), got {title_layer.color}"
+    assert title_layer.color == 2, f"TITLE layer color should be 2 (yellow) for clear visibility, got {title_layer.color}"
+
+
+def test_column_stirrup_outside_longitudinal_rebar() -> None:
+    from struct_draw.core import ColumnData
+    from struct_draw.elements.column import _compute_rebar_coords, _bar_diameter
+
+    w, d, cover = 18.0, 18.0, 1.5
+    tie_dia = _bar_diameter("#3")
+    bar_dia = _bar_diameter("#8")
+
+    coords = _compute_rebar_coords(4, w, d, cover, tie_dia, bar_dia)
+    # Bottom-left bar center: (cover + tie_dia + bar_dia/2, cover + tie_dia + bar_dia/2)
+    bl_x, bl_y = coords[0]
+    # Outermost edge of longitudinal bar: bl_x - bar_dia/2 = cover + tie_dia > cover
+    assert abs(bl_x - bar_dia / 2.0 - (cover + tie_dia)) < 1e-6, "Longitudinal bar outer edge must sit on inner face of tie"
+    assert abs(bl_y - bar_dia / 2.0 - (cover + tie_dia)) < 1e-6, "Longitudinal bar outer edge must sit on inner face of tie"
+
+
+def test_column_elevation_aci318_seismic_detailing() -> None:
+    from struct_draw.core import ColumnData
+    from struct_draw.elements import column
+
+    class Target:
+        def __init__(self):
+            self.entities = []
+        def add_line(self, *a, **k): self.entities.append(('line', a, k))
+        def add_lwpolyline(self, *a, **k): self.entities.append(('poly', a, k))
+        def add_text(self, *a, **k): self.entities.append(('text', a, k))
+        def add_circle(self, *a, **k): self.entities.append(('circle', a, k))
+        def add_leader(self, *a, **k): self.entities.append(('leader', a, k))
+        def add_mtext(self, text, *a, **k):
+            class MText:
+                def set_location(self, *a, **k): pass
+            self.entities.append(('mtext', text, a, k))
+            return MText()
+        def add_linear_dim(self, *a, **k):
+            class Dim:
+                def set_text(self, *a, **k): pass
+                def render(self): pass
+            self.entities.append(('dim', a, k))
+            return Dim()
+
+    col = ColumnData(
+        name="C_SEISMIC",
+        section=GeometrySection(width_in=20.0, depth_in=20.0, cover_in=1.5),
+        height_in=144.0,
+        longitudinal_bars=(Rebar(mark="C1", size="#8", quantity=8),),
+        stirrups=Stirrup(size="#4", spacing_in=8.0),
+    )
+
+    t = Target()
+    refs = column.elevation_view(t, col, origin=(0.0, 0.0))
+    # Verify Lo >= max(w, d, H/6, 18")
+    assert refs["lo"] >= max(20.0, 144.0 / 6.0, 18.0)
+    # Verify so is closely spaced (<= 4")
+    assert refs["so"] <= 4.0
+    # Verify lap splice is provided
+    assert refs["l_splice"] >= 48.0 * 1.0  # 48 * db
+    # Check that drawing entities include REBAR, STIRRUP, DIM_LINEAR, LEVEL, LEADER, TITLE
+    layers_used = set()
+    for ent in t.entities:
+        kwargs = ent[-1]
+        if "layer" in kwargs:
+            layers_used.add(kwargs["layer"])
+        elif "dxfattribs" in kwargs and "layer" in kwargs["dxfattribs"]:
+            layers_used.add(kwargs["dxfattribs"]["layer"])
+    assert "STIRRUP" in layers_used
+    assert "REBAR" in layers_used
+    assert "DIM_LINEAR" in layers_used
+    assert "TITLE" in layers_used
+
+
+def test_column_section_hooks_and_leaders() -> None:
+    from struct_draw.core import ColumnData, GeometrySection, Rebar, Stirrup
+    from struct_draw.elements import column
+
+    class Target:
+        def __init__(self):
+            self.entities = []
+        def add_line(self, *a, **k): self.entities.append(('line', a, k))
+        def add_lwpolyline(self, *a, **k): self.entities.append(('poly', a, k))
+        def add_text(self, *a, **k): self.entities.append(('text', a, k))
+        def add_circle(self, *a, **k): self.entities.append(('circle', a, k))
+        def add_leader(self, *a, **k): self.entities.append(('leader', a, k))
+        def add_mtext(self, text, *a, **k):
+            class MText:
+                def set_location(self, *a, **k): pass
+            self.entities.append(('mtext', text, a, k))
+            return MText()
+        def add_linear_dim(self, *a, **k):
+            class Dim:
+                def set_text(self, *a, **k): pass
+                def render(self): pass
+            self.entities.append(('dim', a, k))
+            return Dim()
+
+    col = ColumnData(
+        name="C1",
+        section=GeometrySection(width_in=18.0, depth_in=18.0, cover_in=1.5),
+        height_in=120.0,
+        longitudinal_bars=(Rebar(mark="C1", size="#8", quantity=4),),
+        stirrups=Stirrup(size="#3", spacing_in=5.0),
+    )
+
+    t = Target()
+    refs = column.section_view(t, col, origin=(0.0, 0.0))
+    # Verify leader was added
+    leader_ents = [e for e in t.entities if e[0] == 'leader']
+    assert len(leader_ents) == 2, f"Expected 2 leaders in section view, got {len(leader_ents)}"
+
+    # Verify stirrup lines in section include the 135° hook legs wrapping around the top-left corner rebar
+    # Leg 1 starts on top stirrup line to the right of corner bar: (1.5 + 0.375 + 1.0, 16.5) = (2.875, 16.5)
+    # Leg 2 starts on left stirrup line below corner bar: (1.5, 16.5 - 0.375 - 1.0) = (1.5, 15.125)
+    stirrup_lines = [
+        e for e in t.entities
+        if e[0] == 'line' and (e[2].get('layer') == 'STIRRUP' or e[2].get('dxfattribs', {}).get('layer') == 'STIRRUP')
+    ]
+    assert len(stirrup_lines) >= 2, "Expected at least 2 hook leg lines"
+    leg1_start = stirrup_lines[0][1][0]
+    leg2_start = stirrup_lines[1][1][0]
+    assert abs(leg1_start[0] - 2.875) < 1e-5 and abs(leg1_start[1] - 16.5) < 1e-5, f"Leg 1 must start on top stirrup line past bar (2.875, 16.5), got {leg1_start}"
+    assert abs(leg2_start[0] - 1.5) < 1e-5 and abs(leg2_start[1] - 15.125) < 1e-5, f"Leg 2 must start on left stirrup line below bar (1.5, 15.125), got {leg2_start}"
+

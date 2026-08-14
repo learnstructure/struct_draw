@@ -130,10 +130,10 @@ def ensure_dim_style(
     *,
     name: str,
     textstyle: str = "Dimension",
-    text_height: float = 100.0,
-    arrow_size: float = 50.0,
-    extension_offset: float = 50.0,
-    extension_extension: float = 50.0,
+    text_height: float = 175.0,
+    arrow_size: float = 120.0,
+    extension_offset: float = 80.0,
+    extension_extension: float = 80.0,
     fixed_extension_len: float | None = None,
 ) -> Any:
     """Create or update a dimension style on ``doc``.
@@ -145,24 +145,26 @@ def ensure_dim_style(
     else:
         style = doc.dimstyles.add(name=name)
 
-    if fixed_extension_len is None:
-        fixed_extension_len = extension_extension
-
     pairs: list[tuple[str, Any]] = [
         ("dimtxsty", textstyle),        # 340 — dimension text style
         ("dimtxt", text_height),        # 140 — text height
         ("dimasz", arrow_size),         #  41 — arrow size
         ("dimexo", extension_offset),   #  42 — extension line offset
         ("dimexe", extension_extension),#  44 — extension line extension
-        ("dimfxl", fixed_extension_len),# 371 — fixed extension line length
-        ("dimfxlon", 1),                # 290 — enable fixed extension line length
-        ("dimgap", text_height * 0.1),  # 147 — text gap proportional to text height
+        ("dimgap", text_height * 0.25), # 147 — text gap proportional to text height
         ("dimtad", 1),                  #  77 — text above dimension line
         ("dimzin", 8),                  #  78 — suppress trailing zeros
+        ("dimdsep", 46),                # 278 — decimal separator '.' (ASCII 46)
         ("dimclrd", 132),               # 176 — dimension line color
         ("dimclre", 132),               # 177 — extension line color
         ("dimclrt", 151),               # 178 — text color
     ]
+    if fixed_extension_len is not None:
+        pairs.extend([
+            ("dimfxl", fixed_extension_len),
+            ("dimfxlon", 1),
+        ])
+
     for code, value in pairs:
         try:
             setattr(style.dxf, code, value)

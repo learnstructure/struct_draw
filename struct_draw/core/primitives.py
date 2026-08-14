@@ -152,12 +152,19 @@ def draw_mtext(
     """Draw an MTEXT (multi-line text) entity."""
     if not text:
         raise DrawError("draw_mtext requires non-empty text.")
+    if not hasattr(target, "add_mtext"):
+        attribs: dict[str, Any] = {"layer": layer, "height": height}
+        if style:
+            attribs["style"] = style
+        return target.add_text(text, dxfattribs={"insert": position, **attribs})
+
     attribs: dict[str, Any] = {"layer": layer, "char_height": height}
     if style:
         attribs["style"] = style
     mtext = target.add_mtext(text, dxfattribs=attribs)
-    mtext.set_location(position)
-    if width > 0:
+    if hasattr(mtext, "set_location"):
+        mtext.set_location(position)
+    if width > 0 and hasattr(mtext, "dxf"):
         mtext.dxf.width = width
     return mtext
 
@@ -320,11 +327,17 @@ def draw_leader(
     text_height: float = 0.20,
     layer: str = "LEADER",
 ) -> Any:
-    """Draw a multi-vertex leader with optional annotation text as an AutoCAD MULTILEADER."""
+    """Draw an AutoCAD MULTILEADER (mLeader) entity with integrated multi-line MTEXT annotation,
+
+    or an AutoCAD LEADER attached with MTEXT.
+    """
     if len(vertices) < 2:
         raise DrawError("draw_leader requires at least two vertices.")
 
-    if text and hasattr(target, "add_multileader_mtext"):
+    clean_t = text.replace("φ", "mm dia").replace("Φ", "mm dia").replace("ϕ", "mm dia") if text else ""
+
+    # 1. Try AutoCAD native MULTILEADER (mLeader) via ezdxf MultiLeaderBuilder
+    if clean_t and hasattr(target, "add_multileader_mtext"):
         try:
             from ezdxf.math import Vec2
             from ezdxf.render import mleader
@@ -343,7 +356,6 @@ def draw_leader(
                 side = mleader.ConnectionSide.right
                 align = mleader.TextAlignment.right
 
-            clean_t = text.replace("φ", "mm dia").replace("Φ", "mm dia").replace("ϕ", "mm dia")
             ml_builder.set_content(
                 clean_t,
                 char_height=text_height,
@@ -365,16 +377,31 @@ def draw_leader(
         except Exception:
             pass
 
-    leader = target.add_leader(vertices=list(vertices), dxfattribs={"layer": layer})
-    if arrow_size and hasattr(leader, "dxf") and hasattr(leader.dxf, "arrow_size"):
+    # 2. Try AutoCAD LEADER object with attached MTEXT
+    leader = None
+    if hasattr(target, "add_leader"):
         try:
-            leader.dxf.arrow_size = arrow_size
+            leader = target.add_leader(vertices=list(vertices), dxfattribs={"layer": layer})
+            if arrow_size and hasattr(leader, "dxf") and hasattr(leader.dxf, "arrow_size"):
+                try:
+                    leader.dxf.arrow_size = arrow_size
+                except Exception:
+                    pass
         except Exception:
-            pass
-    if text:
+            leader = draw_polyline(target, list(vertices), close=False, layer=layer)
+    else:
+        leader = draw_polyline(target, list(vertices), close=False, layer=layer)
+
+    # 3. Add single multi-line MTEXT object
+    if clean_t:
         last_pt = vertices[-1]
-        text_pos = (last_pt[0] + text_height * 0.5, last_pt[1])
-        draw_text(target, text, position=text_pos, height=text_height, layer=layer)
+        text_gap = text_height * 0.35
+        text_pos = (last_pt[0] + text_gap, last_pt[1] + text_height * 0.25)
+        if hasattr(target, "add_mtext"):
+            draw_mtext(target, clean_t, position=text_pos, height=text_height, layer="TEXT")
+        else:
+            draw_text(target, clean_t, position=text_pos, height=text_height, layer="TEXT")
+
     return leader
 
 

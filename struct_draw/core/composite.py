@@ -431,5 +431,6 @@ __all__ = [
     "draw_break_line",
     "draw_section_cut_symbol",
     "draw_dimension",
+    "draw_leader",
     "draw_hatch",
 ]

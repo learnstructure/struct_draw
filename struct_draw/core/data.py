@@ -1111,6 +1111,437 @@ class SlabData:
 
 
 # ---------------------------------------------------------------------------
+# General Drawing / Framing Model data classes (plan & elevation without rebar)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FrameNode:
+    """A node / joint in a structural frame or truss.
+
+    Attributes
+    ----------
+    id
+        Node identifier (e.g. ``1``, ``"N1"``).
+    x
+        X-coordinate in global/frame coordinates.
+    y
+        Y-coordinate in global/frame coordinates (or elevation Z in 2D frame).
+    z
+        Z-coordinate (optional, 0.0 for 2D).
+    tag
+        Optional annotation label.
+    """
+
+    id: int | str
+    x: float
+    y: float
+    z: float = 0.0
+    tag: str = ""
+
+
+@dataclass(frozen=True)
+class FrameMember:
+    """A structural frame member (beam, column, truss chord/web, brace, wall).
+
+    Attributes
+    ----------
+    id
+        Member identifier (e.g. ``"B1"``, ``"C1"``, ``"TC1"``).
+    start_node
+        Start node ID or (x, y) coordinates.
+    end_node
+        End node ID or (x, y) coordinates.
+    member_type
+        Type of member: ``"beam"``, ``"column"``, ``"truss"``, ``"chord"``, ``"strut"``, ``"brace"``, ``"wall"``.
+    name
+        Display mark (e.g. ``"B-1"``, ``"C-1"``, ``"TC-1"``).
+    section_name
+        Designation or cross-section string (e.g. ``"300x500"``, ``"W12x26"``, ``"HSS 4x4x1/4"``).
+    width_in
+        Cross-section width (inches or mm).
+    depth_in
+        Cross-section depth / height (inches or mm).
+    tag
+        Optional extra annotation.
+    """
+
+    id: int | str
+    start_node: int | str | tuple[float, float]
+    end_node: int | str | tuple[float, float]
+    member_type: str = "beam"
+    name: str = ""
+    section_name: str = ""
+    width_in: float = 12.0
+    depth_in: float = 18.0
+    tag: str = ""
+
+
+@dataclass(frozen=True)
+class FrameGridLine:
+    """A grid axis line with a bubble mark."""
+
+    label: str = "A"
+    coord: float = 0.0
+    axis: str = "X"  # "X", "Y", or "Z"
+
+
+@dataclass(frozen=True)
+class FrameLevelLine:
+    """A floor or story level indicator."""
+
+    label: str = "GL"
+    elevation: float = 0.0
+
+
+@dataclass(frozen=True)
+class GeneralFrameData:
+    """Comprehensive general arrangement / structural framing model for 2D/3D plans and elevations.
+
+    Draws clean geometric outlines of columns, beams, braces, and trusses with
+    grid lines, story levels, dimensions, and member marks — without rebar details.
+    """
+
+    name: str = "FRAME-1"
+    nodes: Sequence[FrameNode] = field(default_factory=tuple)
+    members: Sequence[FrameMember] = field(default_factory=tuple)
+    grid_x: Sequence[FrameGridLine] = field(default_factory=tuple)
+    grid_y: Sequence[FrameGridLine] = field(default_factory=tuple)
+    levels: Sequence[FrameLevelLine] = field(default_factory=tuple)
+    title: str = "GENERAL FRAMING ELEVATION"
+    view_mode: str = "elevation"  # "elevation", "plan", "truss", "both"
+    member_line_mode: str = "outline"  # "outline", "centerline", "both"
+    show_dimensions: bool = True
+    show_member_tags: bool = True
+    show_grid_bubbles: bool = True
+    show_level_markers: bool = True
+    is_metric: bool = False
+
+    @classmethod
+    def from_grid(
+        cls,
+        *,
+        name: str = "FRAME-1",
+        bays: Sequence[float] = (240.0, 240.0, 240.0),
+        story_heights: Sequence[float] = (144.0, 120.0, 120.0),
+        col_width: float = 16.0,
+        col_depth: float = 16.0,
+        beam_width: float = 12.0,
+        beam_depth: float = 20.0,
+        grid_labels: Sequence[str] | None = None,
+        level_labels: Sequence[str] | None = None,
+        braced_bays: Sequence[tuple[int, int]] | None = None,  # list of (bay_idx, story_idx) for X-bracing
+        title: str = "BUILDING FRAME ELEVATION",
+        view_mode: str = "elevation",
+        is_metric: bool | None = None,
+    ) -> GeneralFrameData:
+        """Create a regular multi-bay, multi-story building frame elevation."""
+        if is_metric is None:
+            is_metric = (len(bays) > 0 and bays[0] >= 1000.0) or (len(story_heights) > 0 and story_heights[0] >= 1000.0)
+
+        # X coords
+        x_coords = [0.0]
+        for b in bays:
+            x_coords.append(x_coords[-1] + b)
+
+        # Y coords (elevations)
+        y_coords = [0.0]
+        for h in story_heights:
+            y_coords.append(y_coords[-1] + h)
+
+        num_x = len(x_coords)
+        num_y = len(y_coords)
+
+        # Default labels
+        if grid_labels is None:
+            grid_labels = [chr(65 + i) if i < 26 else f"G{i+1}" for i in range(num_x)]
+        if level_labels is None:
+            level_labels = ["GL"] + [f"FL{i}" if i < num_y - 1 else "ROOF" for i in range(1, num_y)]
+
+        # Generate nodes
+        nodes = []
+        node_map = {}
+        node_id = 1
+        for j, y in enumerate(y_coords):
+            for i, x in enumerate(x_coords):
+                n = FrameNode(id=node_id, x=x, y=y)
+                nodes.append(n)
+                node_map[(i, j)] = node_id
+                node_id += 1
+
+        members = []
+        mem_id = 1
+
+        # Columns (vertical members between stories)
+        for i in range(num_x):
+            for j in range(num_y - 1):
+                n_bot = node_map[(i, j)]
+                n_top = node_map[(i, j + 1)]
+                c_name = f"C{i+1}" if num_y <= 2 else f"C{i+1}-{j+1}"
+                members.append(
+                    FrameMember(
+                        id=f"M{mem_id}",
+                        start_node=n_bot,
+                        end_node=n_top,
+                        member_type="column",
+                        name=c_name,
+                        section_name=f"{int(col_width)}x{int(col_depth)}",
+                        width_in=col_width,
+                        depth_in=col_depth,
+                    )
+                )
+                mem_id += 1
+
+        # Beams (horizontal members at floor levels j >= 1)
+        for j in range(1, num_y):
+            for i in range(num_x - 1):
+                n_left = node_map[(i, j)]
+                n_right = node_map[(i + 1, j)]
+                b_name = f"B{i+1}" if num_y <= 2 else f"B{i+1}-{j}"
+                members.append(
+                    FrameMember(
+                        id=f"M{mem_id}",
+                        start_node=n_left,
+                        end_node=n_right,
+                        member_type="beam",
+                        name=b_name,
+                        section_name=f"{int(beam_width)}x{int(beam_depth)}",
+                        width_in=beam_width,
+                        depth_in=beam_depth,
+                    )
+                )
+                mem_id += 1
+
+        # Optional Bracing
+        if braced_bays:
+            for b_idx, s_idx in braced_bays:
+                if 0 <= b_idx < num_x - 1 and 0 <= s_idx < num_y - 1:
+                    n1 = node_map[(b_idx, s_idx)]
+                    n2 = node_map[(b_idx + 1, s_idx + 1)]
+                    n3 = node_map[(b_idx + 1, s_idx)]
+                    n4 = node_map[(b_idx, s_idx + 1)]
+                    brace_w = max(4.0, beam_width * 0.5)
+                    members.append(
+                        FrameMember(
+                            id=f"M{mem_id}",
+                            start_node=n1,
+                            end_node=n2,
+                            member_type="brace",
+                            name=f"BR{b_idx+1}-{s_idx+1}A",
+                            width_in=brace_w,
+                            depth_in=brace_w,
+                        )
+                    )
+                    mem_id += 1
+                    members.append(
+                        FrameMember(
+                            id=f"M{mem_id}",
+                            start_node=n3,
+                            end_node=n4,
+                            member_type="brace",
+                            name=f"BR{b_idx+1}-{s_idx+1}B",
+                            width_in=brace_w,
+                            depth_in=brace_w,
+                        )
+                    )
+                    mem_id += 1
+
+        grids_x = [FrameGridLine(label=grid_labels[i], coord=x, axis="X") for i, x in enumerate(x_coords)]
+        levels = [FrameLevelLine(label=level_labels[j], elevation=y) for j, y in enumerate(y_coords)]
+
+        return cls(
+            name=name,
+            nodes=tuple(nodes),
+            members=tuple(members),
+            grid_x=tuple(grids_x),
+            levels=tuple(levels),
+            title=title,
+            view_mode=view_mode,
+            is_metric=is_metric,
+        )
+
+
+@dataclass(frozen=True)
+class FramingPlanData:
+    """Structural floor / roof framing plan view showing beam and column layouts on grid axes."""
+
+    name: str = "FP-1"
+    grid_x: Sequence[float] = (240.0, 240.0, 240.0)  # bay widths along X
+    grid_y: Sequence[float] = (240.0, 240.0)         # bay depths along Y
+    grid_labels_x: Sequence[str] = ()                # "A", "B", "C", "D"
+    grid_labels_y: Sequence[str] = ()                # "1", "2", "3"
+    col_width_in: float = 16.0
+    col_depth_in: float = 16.0
+    beam_width_in: float = 12.0
+    beam_depth_in: float = 20.0
+    title: str = "FLOOR FRAMING PLAN"
+    level_name: str = "FIRST FLOOR (EL. +12'-0\")"
+    is_metric: bool = False
+    secondary_beams: Sequence[tuple[int, int, str]] = field(default_factory=tuple)  # (bay_x, bay_y, "mid_x"|"mid_y")
+
+
+@dataclass(frozen=True)
+class FrameElevationData:
+    """2D structural frame elevation along a specific grid line."""
+
+    name: str = "ELEV-1"
+    grid_name: str = "GRID A"
+    bays: Sequence[float] = (240.0, 240.0, 240.0)
+    story_heights: Sequence[float] = (144.0, 120.0, 120.0)
+    col_width_in: float = 16.0
+    col_depth_in: float = 16.0
+    beam_width_in: float = 12.0
+    beam_depth_in: float = 20.0
+    grid_labels: Sequence[str] = ()
+    level_labels: Sequence[str] = ()
+    braced_bays: Sequence[tuple[int, int]] = field(default_factory=tuple)
+    title: str = "FRAME ELEVATION - GRID A"
+    is_metric: bool = False
+
+
+@dataclass(frozen=True)
+class TrussData:
+    """Steel or timber roof/bridge truss general outline view."""
+
+    name: str = "TRUSS-1"
+    span_in: float = 480.0
+    height_in: float = 96.0
+    panels: int = 6
+    truss_type: str = "pratt"  # "pratt", "howe", "warren", "pitched", "fink"
+    chord_width_in: float = 6.0
+    chord_depth_in: float = 6.0
+    web_width_in: float = 4.0
+    web_depth_in: float = 4.0
+    title: str = "ROOF TRUSS OUTLINE & ELEVATION"
+    is_metric: bool = False
+
+    @classmethod
+    def from_span(
+        cls,
+        *,
+        name: str = "TRUSS-1",
+        span: float = 480.0,
+        height: float = 96.0,
+        panels: int = 6,
+        truss_type: str = "pratt",
+        chord_depth: float | None = None,
+        web_depth: float | None = None,
+        is_metric: bool | None = None,
+        title: str | None = None,
+    ) -> TrussData:
+        """Construct TrussData with automatic dimension defaults."""
+        if is_metric is None:
+            is_metric = span >= 2000.0 or height >= 1000.0
+        cd = chord_depth if chord_depth is not None else (150.0 if is_metric else 6.0)
+        wd = web_depth if web_depth is not None else (100.0 if is_metric else 4.0)
+        return cls(
+            name=name,
+            span_in=span,
+            height_in=height,
+            panels=panels,
+            truss_type=truss_type,
+            chord_width_in=cd,
+            chord_depth_in=cd,
+            web_width_in=wd,
+            web_depth_in=wd,
+            title=title or f"{truss_type.upper()} TRUSS ELEVATION",
+            is_metric=is_metric,
+        )
+
+    @classmethod
+    def pratt(
+        cls,
+        *,
+        span_in: float = 480.0,
+        height_in: float = 96.0,
+        panels: int = 6,
+        title: str = "PRATT ROOF TRUSS",
+        chord_depth: float | None = None,
+        web_depth: float | None = None,
+        is_metric: bool | None = None,
+    ) -> TrussData:
+        return cls.from_span(
+            span=span_in,
+            height=height_in,
+            panels=panels,
+            truss_type="pratt",
+            title=title,
+            chord_depth=chord_depth,
+            web_depth=web_depth,
+            is_metric=is_metric,
+        )
+
+    @classmethod
+    def warren(
+        cls,
+        *,
+        span_in: float = 480.0,
+        height_in: float = 96.0,
+        panels: int = 6,
+        title: str = "WARREN TRUSS",
+        chord_depth: float | None = None,
+        web_depth: float | None = None,
+        is_metric: bool | None = None,
+    ) -> TrussData:
+        return cls.from_span(
+            span=span_in,
+            height=height_in,
+            panels=panels,
+            truss_type="warren",
+            title=title,
+            chord_depth=chord_depth,
+            web_depth=web_depth,
+            is_metric=is_metric,
+        )
+
+    @classmethod
+    def howe(
+        cls,
+        *,
+        span_in: float = 480.0,
+        height_in: float = 96.0,
+        panels: int = 6,
+        title: str = "HOWE TRUSS",
+        chord_depth: float | None = None,
+        web_depth: float | None = None,
+        is_metric: bool | None = None,
+    ) -> TrussData:
+        return cls.from_span(
+            span=span_in,
+            height=height_in,
+            panels=panels,
+            truss_type="howe",
+            title=title,
+            chord_depth=chord_depth,
+            web_depth=web_depth,
+            is_metric=is_metric,
+        )
+
+    @classmethod
+    def pitched(
+        cls,
+        *,
+        span_in: float = 480.0,
+        height_in: float = 120.0,
+        panels: int = 6,
+        title: str = "PITCHED ROOF TRUSS",
+        chord_depth: float | None = None,
+        web_depth: float | None = None,
+        is_metric: bool | None = None,
+    ) -> TrussData:
+        return cls.from_span(
+            span=span_in,
+            height=height_in,
+            panels=panels,
+            truss_type="pitched",
+            title=title,
+            chord_depth=chord_depth,
+            web_depth=web_depth,
+            is_metric=is_metric,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Member-type enum (used by adapters / dispatch)
 # ---------------------------------------------------------------------------
 
@@ -1125,6 +1556,10 @@ class MemberType(str, Enum):
     COLUMN = "column"
     STAIRCASE = "staircase"
     SLAB = "slab"
+    GENERAL_FRAME = "general_frame"
+    FRAMING_PLAN = "framing_plan"
+    FRAME_ELEVATION = "frame_elevation"
+    TRUSS = "truss"
 
 
 __all__ = [
@@ -1141,5 +1576,13 @@ __all__ = [
     "ColumnData",
     "StaircaseData",
     "SlabData",
+    "FrameNode",
+    "FrameMember",
+    "FrameGridLine",
+    "FrameLevelLine",
+    "GeneralFrameData",
+    "FramingPlanData",
+    "FrameElevationData",
+    "TrussData",
     "MemberType",
 ]

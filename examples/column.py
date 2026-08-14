@@ -51,29 +51,35 @@ def main() -> None:
     print(f"Longitudinal bars count: {len(column.longitudinal_bars)}, Stirrup: {column.stirrups.size} @ {column.stirrups.spacing_in}\"")
 
     # 2. Render using high-level struct_draw.save_dxf or struct_draw.render
-    out_path = Path("output_column.dxf")
+    out_path = Path("struct_draw/examples/output/output_column.dxf")
     try:
         sd.save_dxf(column, out_path)
         print(f"Successfully saved column drawing to: {out_path.resolve()}")
     except Exception as err:
         print(f"Note on DXF saving (ezdxf dependency check): {err}")
 
-    # # 3. Direct element functions usage demonstration with mock target
-    # class Target:
-    #     def add_line(self, *args, **kwargs): pass
-    #     def add_lwpolyline(self, *args, **kwargs): pass
-    #     def add_text(self, *args, **kwargs): pass
-    #     def add_circle(self, *args, **kwargs): pass
-    #     def add_linear_dim(self, *args, **kwargs): return self
-    #     def set_text(self, *args, **kwargs): pass
-    #     def render(self, *args, **kwargs): pass
+    # 3. Direct element functions usage demonstration
+    class Target:
+        def __init__(self):
+            self.entities = []
+        def add_line(self, *args, **kwargs): self.entities.append(('line', args, kwargs))
+        def add_lwpolyline(self, *args, **kwargs): self.entities.append(('poly', args, kwargs))
+        def add_text(self, *args, **kwargs): self.entities.append(('text', args, kwargs))
+        def add_circle(self, *args, **kwargs): self.entities.append(('circle', args, kwargs))
+        def add_linear_dim(self, *args, **kwargs):
+            class Dim:
+                def set_text(self, *a, **k): pass
+                def render(self): pass
+            self.entities.append(('dim', args, kwargs))
+            return Dim()
 
-    # target = Target()
-    # sec_ref = column_element.section_view(target, column, origin=(0.0, 0.0), title="Column Section C1")
-    # elev_ref = column_element.elevation_view(target, column, origin=(0.0, -150.0), title="Column Elevation C1")
+    target = Target()
+    res = column_element.drawing(target, column, origin=(0.0, 0.0), layout="side_by_side")
 
-    # print(f"Direct section_view references: {sec_ref}")
-    # print(f"Direct elevation_view references: {elev_ref}")
+    print(f"Dynamic column layout generated: {len(target.entities)} entities")
+    print(f"Elevation bounding box: {res['elevation']['bounding_box']}")
+    print(f"Section bounding box:   {res['section']['bounding_box']}")
+    print(f"Overall bounding box:   {res['bounding_box']}")
 
 
 if __name__ == "__main__":
