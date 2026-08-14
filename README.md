@@ -104,43 +104,69 @@ sd.save_dxf(footing_us, "footing_drawing_us.dxf")
 
 ```text
 struct_draw/
-├── __init__.py               # Top-level exports and high-level drawing/saving API functions
-├── version.py                # Package version definition
-├── adapters/                 # Design code adapters (e.g. ACI 318 calculation integration)
+├── __init__.py                # Top-level exports and high-level drawing/saving API functions
+├── version.py                 # Package version definition
+├── adapters/                  # Producer-result -> struct_draw dataclass adapters
 │   ├── __init__.py
-│   └── aci318.py             # Converts ACI 318 design code objects into struct_draw Data models
-├── backends/                 # DXF output generation backend (ezdxf integration)
-│   └── __init__.py           # ezdxf document creation, layer setup, and DXF exporter logic
-├── core/                     # Core CAD rendering primitives, geometry engines, & data structures
+│   ├── aci318.py              # Reads aci318 result objects by attribute name only
+│   └── struct_core_adapter.py # Translates struct_core DesignResult/DetailingResult -> struct_draw Data models (ecosystem entry point)
+├── backends/                  # Drawing-format backends (DXF today; PDF / IFC / SVG planned)
+│   └── __init__.py            # ezdxf document creation, layer setup, DXF dispatch + save_dxf()
+├── core/                      # Drawing-side data classes, primitives, and helpers
 │   ├── __init__.py
-│   ├── data.py               # Strongly-typed dataclasses for structural parameters & rebar specs
-│   ├── primitives.py         # Basic CAD entities (lines, polylines, circles, rectangles, text, leaders)
-│   ├── composite.py          # High-level CAD details (rebar hooks, dimensions, grid bubbles, section callouts)
-│   ├── document.py           # Document wrapper for layer, block, and viewport management
-│   ├── geometry.py           # Geometric transforms, vectors, and bounding box calculations
-│   ├── sheet.py              # Sheet border layouts, title blocks, and drawing scale handling
-│   └── viewport.py           # CAD viewport configuration and layout scaling
-├── elements/                 # Structural member drawing engines (Generates complete detailing drawings)
+│   ├── data.py                # Strongly-typed dataclasses for structural parameters & rebar specs
+│   ├── primitives.py          # Basic CAD entities (lines, polylines, circles, rectangles, text, leaders)
+│   ├── composite.py           # High-level CAD details (rebar hooks, dimensions, grid bubbles, section callouts)
+│   ├── document.py            # Document wrapper for layer, block, and viewport management
+│   ├── geometry.py            # Geometric transforms, vectors, and bounding box calculations
+│   ├── sheet.py               # Sheet border layouts, title blocks, and drawing scale handling
+│   └── viewport.py            # CAD viewport configuration and layout scaling
+├── elements/                  # Structural member drawing engines (Generates complete detailing drawings)
 │   ├── __init__.py
-│   ├── footing.py            # Spread / isolated footing detailing (Plan & Section views)
-│   ├── combined_footing.py   # Combined multi-column footing detailing & schedule tables
-│   ├── staircase.py          # Waist-slab staircase elevation, flight details, treads & risers
-│   ├── beam.py               # Reinforced concrete beam elevation, section cuts, & stirrup zones
-│   ├── column.py             # Column elevation, cross-sections, & tie arrangements
-│   └── slab.py               # One-way and two-way slab sectional reinforcement details
-├── style/                    # CAD standards, layer colors, line types, & text styles
+│   ├── beam.py                # Reinforced concrete beam elevation, section cuts, & stirrup zones
+│   ├── beam_profile.py        # Beam profile / span elevation drawings
+│   ├── column.py              # Column elevation, cross-sections, & tie arrangements
+│   ├── combined_footing.py    # Combined multi-column footing detailing & schedule tables
+│   ├── footing.py             # Spread / isolated footing detailing (Plan & Section views)
+│   ├── slab.py                # One-way and two-way slab sectional reinforcement details
+│   └── staircase.py           # Waist-slab staircase elevation, flight details, treads & risers
+├── style/                     # Drawing-side style registries (layers, linetypes, text, dimensions, blocks)
 │   ├── __init__.py
-│   ├── blocks.py             # Standard CAD blocks (north arrow, section arrows, level symbols)
-│   ├── dimension_styles.py   # Dimension line arrowheads, tick marks, and formatting
-│   ├── layers.py             # Standardized CAD layer definitions and color mappings (ACI/AIA standards)
-│   ├── linetypes.py          # Custom CAD linetype definitions (hidden, centerline, phantom)
-│   └── text_styles.py        # Text font styles and character heights
-└── utils/                    # Helper utilities and error handling
+│   ├── blocks.py              # Standard CAD blocks (north arrow, section arrows, level symbols)
+│   ├── dimension_styles.py    # Dimension line arrowheads, tick marks, and formatting
+│   ├── layers.py              # Standardized CAD layer definitions and color mappings (ACI/AIA standards)
+│   ├── linetypes.py           # Custom CAD linetype definitions (hidden, centerline, phantom)
+│   └── text_styles.py         # Text font styles and character heights
+└── utils/                     # Helper utilities and error handling
     ├── __init__.py
-    ├── constants.py          # Physical constants, conversion factors (mm to inches), and defaults
-    ├── exceptions.py         # Custom exception hierarchy (DrawError, ValidationError)
-    └── geometry.py           # 2D vector mathematics and intersection helpers
+    ├── constants.py           # Physical constants, conversion factors (mm to inches), and defaults
+    ├── exceptions.py          # Custom exception hierarchy (DrawError, ValidationError, BackendError)
+    └── geometry.py            # 2D vector mathematics and intersection helpers
 ```
+
+### Ecosystem integration
+
+`struct_draw` is the dedicated drawing-generation layer of the [Structural Engineering Ecosystem](https://github.com/...). It consumes `DesignResult` and `DetailingResult` objects from [`struct_core`](https://github.com/...) (produced by [`aci318`](https://github.com/...)) and never re-implements engineering logic. The recommended end-to-end usage is:
+
+```python
+from struct_core import Project
+from fem2d.adapters import model_from_core, result_to_core
+from aci318.adapters import design_from_core
+from struct_draw.adapters import draw_from_core
+
+structure = model_from_core(project, load_case_id="Gravity")
+structure.solve()
+project.analysis_results["Static_1"] = result_to_core(structure, analysis_case_id="Static_1")
+
+design_res, detail_res = design_from_core(project)
+project.design_results["ACI318_19"] = design_res
+project.detailing_results["ACI318_19"] = detail_res
+
+output = draw_from_core(project)
+output["drawing"].saveas("portal_frame_detailing.dxf")
+```
+
+A runnable example lives at `struct_agent/examples/end_to_end_ecosystem_pipeline.py`.
 
 ---
 
@@ -156,6 +182,12 @@ Generated DXF drawings organize entities onto standard CAD layers:
 | `CENTERLINE` | Column and grid centerline axes |
 | `SECTION` | Section cut lines and callout symbols |
 | `Text` | Annotations, titles, and multileader text |
+
+---
+
+## Ecosystem Position
+
+`struct_draw` is the dedicated drawing-generation layer of the Structural Engineering Ecosystem. It **only renders** — it never performs FEM analysis, dynamics, RC design, or detailing decisions. All reinforcement information comes from `aci318.DetailingResult`. For the full architecture see the [root `agent.md`](https://github.com/...) and [aci318's `agent.md`](https://github.com/...).
 
 ---
 

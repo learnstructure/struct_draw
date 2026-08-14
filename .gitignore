@@ -119,3 +119,6 @@ trash/
 # DXF outputs (never commit generated drawings)
 *.dxf
 *.dwg
+
+*.pdf
+README.pdf
