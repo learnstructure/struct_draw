@@ -217,43 +217,32 @@ def section_view(
     for bx, by in bar_coords:
         draw_rebar_circle(target, (ox + bx, oy + by), diameter=main_bar_dia, layer="REBAR")
 
-    # 3. Outer Closed Stirrup (Offset by cover from concrete face)
+    # 3. Double-line Closed Stirrup & 135° Seismic Hooks (Offset by cover from concrete face)
     sx0 = ox + cover
     sy0 = oy + cover
     sw = w - 2.0 * cover
     sh = d - 2.0 * cover
 
     if sw > 0 and sh > 0:
-        # Perimeter closed tie
-        pts_tie = [
-            (sx0, sy0),
-            (sx0 + sw, sy0),
-            (sx0 + sw, sy0 + sh),
-            (sx0, sy0 + sh),
-            (sx0, sy0),
-        ]
-        draw_polyline(target, pts_tie, close=True, layer="STIRRUP")
+        from struct_draw.core.stirrup import StirrupGeometry
 
-        # 4. Standard 135° Seismic Hooks (at Top-Left corner)
-        # In professional CAD detailing, the outer tie wraps around the top-left corner rebar:
-        # Leg 1 originates from the top horizontal stirrup line just to the right of the corner rebar.
-        # Leg 2 originates from the left vertical stirrup line just below the corner rebar.
-        # Both legs extend 135° (45° inclined into the core), cradling the rebar cleanly without cutting through it.
         hook_len = max(6.0 * tie_dia, 3.0 if not is_metric else 75.0)
         cos45 = math.sqrt(0.5)
         sin45 = math.sqrt(0.5)
         dx = hook_len * cos45
         dy = hook_len * sin45
 
-        # Leg 1: Starts on the top horizontal stirrup line just past the corner bar
-        p1_start = (sx0 + tie_dia + main_bar_dia, sy0 + sh)
-        p1_end = (p1_start[0] + dx, p1_start[1] - dy)
-        draw_line(target, p1_start, p1_end, layer="STIRRUP")
-
-        # Leg 2: Starts on the left vertical stirrup line just below the corner bar
-        p2_start = (sx0, sy0 + sh - tie_dia - main_bar_dia)
-        p2_end = (p2_start[0] + dx, p2_start[1] - dy)
-        draw_line(target, p2_start, p2_end, layer="STIRRUP")
+        st_geom = StirrupGeometry(
+            diameter=tie_dia,
+            width=sw,
+            depth=sh,
+            origin=(sx0, sy0),
+            hook_length=hook_len,
+            hook_corner="top_left",
+            double_line=True,
+            layer="STIRRUP",
+        )
+        st_geom.draw(target)
 
         # If 8 or more bars, draw intermediate crosstie with 135° and 90° hooks
         if len(bars) >= 8:

@@ -104,40 +104,45 @@ def draw_stirrup_hooked(
     origin: tuple[float, float] = (0.0, 0.0),
     hook_length: float = 3.0,
     corner: str = "top_left",
+    tie_diameter: float | None = None,
+    double_line: bool = True,
     layer: str = "STIRRUP",
 ) -> list[Any]:
-    """Draw a stirrup with realistic parallel 135° hooks turning into the concrete core.
+    """Draw a professional stirrup with realistic parallel 135° hooks turning into the concrete core.
 
-    The hooks extend at 135° inward from corner(s) into the beam/column core.
-    The two legs start from the vertical and horizontal stirrup sides to flank
-    the corner rebar cleanly.
+    Supports both double-line (standard CAD detailing) and single-line representation.
     """
-    x0, y0 = origin
-    base = draw_stirrup(target, width=width, height=height, origin=origin, layer=layer)
-    if base is None:
+    if width <= 0 or height <= 0:
         return []
-    out = [base]
-    dx = hook_length * 0.7071
-    dy = hook_length * 0.7071
-    gap = max(0.2, hook_length * 0.12)
-    d_offset = max(gap, hook_length * 0.15)
 
-    if corner in ("top_left", "all", "top_both"):
-        p1_start = (x0, y0 + height - d_offset)
-        p1_end = (x0 + dx, y0 + height - d_offset - dy)
-        p2_start = (x0 + d_offset, y0 + height)
-        p2_end = (x0 + d_offset + dx, y0 + height - dy)
-        out.append(draw_line(target, p1_start, p1_end, layer=layer))
-        out.append(draw_line(target, p2_start, p2_end, layer=layer))
+    is_metric = width >= 100.0 or height >= 100.0
+    t = tie_diameter if (tie_diameter is not None and tie_diameter > 0) else (10.0 if is_metric else 0.375)
 
-    if corner in ("top_right", "all", "top_both"):
-        p1_start = (x0 + width, y0 + height - d_offset)
-        p1_end = (x0 + width - dx, y0 + height - d_offset - dy)
-        p2_start = (x0 + width - d_offset, y0 + height)
-        p2_end = (x0 + width - d_offset - dx, y0 + height - dy)
-        out.append(draw_line(target, p1_start, p1_end, layer=layer))
-        out.append(draw_line(target, p2_start, p2_end, layer=layer))
+    from struct_draw.core.stirrup import StirrupGeometry
 
+    st = StirrupGeometry(
+        diameter=t,
+        width=width,
+        depth=height,
+        origin=origin,
+        hook_length=hook_length,
+        hook_corner=corner if corner != "all" else "top_left",
+        double_line=double_line,
+        layer=layer,
+    )
+    out = st.draw(target)
+    if corner in ("top_right", "top_both") and corner != "top_left":
+        st_r = StirrupGeometry(
+            diameter=t,
+            width=width,
+            depth=height,
+            origin=origin,
+            hook_length=hook_length,
+            hook_corner="top_right",
+            double_line=False,
+            layer=layer,
+        )
+        out.extend(st_r.draw(target))
     return out
 
 

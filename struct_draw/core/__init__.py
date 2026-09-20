@@ -18,7 +18,7 @@ imports from :mod:`struct_draw.core`. Nothing below this layer
 imports from above.
 """
 
-from struct_draw.core import data, document, primitives, composite, sheet, viewport, geometry  # noqa: F401
+from struct_draw.core import data, document, primitives, composite, sheet, viewport, geometry, stirrup  # noqa: F401
 from struct_draw.core.data import (
     BeamData,
     ColumnData,
@@ -33,6 +33,7 @@ from struct_draw.core.data import (
 )
 from struct_draw.core.document import Document
 from struct_draw.core.sheet import PaperSize, Sheet, SheetSet
+from struct_draw.core.stirrup import StirrupGeometry, draw_double_line_stirrup
 from struct_draw.core.viewport import ViewKind, Viewport, ViewportLayout
 
 __all__ = [
@@ -43,6 +44,7 @@ __all__ = [
     "sheet",
     "viewport",
     "geometry",
+    "stirrup",
     "BeamData",
     "ColumnData",
     "FootingData",
@@ -53,6 +55,8 @@ __all__ = [
     "SlabData",
     "StaircaseData",
     "Stirrup",
+    "StirrupGeometry",
+    "draw_double_line_stirrup",
     "Document",
     "PaperSize",
     "Sheet",

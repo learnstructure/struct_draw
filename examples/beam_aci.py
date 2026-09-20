@@ -17,7 +17,11 @@ In real use, swap the dummy builder with the actual
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 from types import SimpleNamespace
+
+# Add project root to sys.path for direct script execution without pip install
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import struct_draw as sd
 from struct_draw.adapters.aci318 import from_beam_result
@@ -59,7 +63,8 @@ def main() -> None:
     # Adapter turns producer results into a plain struct_draw dataclass.
     beam_data = from_beam_result((design, detailing))
 
-    out_path = Path("output_beam_from_aci318.dxf")
+    out_dir = Path(__file__).resolve().parent
+    out_path = out_dir / "output" / "output_beam_aci.dxf"
     sd.save_dxf(beam_data, out_path)
     print(f"Saved {out_path} (beam name: {beam_data.name}, "
           f"section: {beam_data.section.width_in}x{beam_data.section.depth_in}\")")

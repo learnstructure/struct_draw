@@ -68,6 +68,7 @@ from struct_draw.core.data import (
     Stirrup,
     TrussData,
 )
+from struct_draw.core.stirrup import StirrupGeometry, draw_double_line_stirrup
 
 
 __all__ = [
@@ -99,5 +100,7 @@ __all__ = [
     "SlabData",
     "StaircaseData",
     "Stirrup",
+    "StirrupGeometry",
+    "draw_double_line_stirrup",
     "TrussData",
 ]

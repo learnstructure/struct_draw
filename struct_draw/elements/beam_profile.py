@@ -518,33 +518,42 @@ def section_views(
     # Outer concrete outline
     draw_rectangle(target, origin=(ox1, oy1), width=w, height=d, close=True, layer=lay_beam)
 
-    # Stirrup
+    # Stirrup (Double-line)
     st_w = max(1.0, w - 2.0 * cover)
     st_h = max(1.0, d - 2.0 * cover)
+    tie_size = getattr(beam_profile.stirrup, "size", "10mm dia") or "10mm dia"
+    tie_dia = 10.0 if is_metric else 0.375
+    if "12" in tie_size:
+        tie_dia = 12.0 if is_metric else 0.5
+    elif "8" in tie_size:
+        tie_dia = 8.0 if is_metric else 0.25
+
     draw_stirrup_hooked(
         target,
         width=st_w,
         height=st_h,
         origin=(ox1 + cover, oy1 + cover),
+        tie_diameter=tie_dia,
         hook_length=(75.0 if is_metric else 3.0),
         corner="top_left",
+        double_line=True,
         layer=lay_stirrup,
     )
 
     # Rebar dots: 4 top bars (support region negative steel), 3 bottom bars
-    top_y = oy1 + d - cover - dot_dia / 2.0
-    bot_y = oy1 + cover + dot_dia / 2.0
+    top_y = oy1 + d - cover - tie_dia - dot_dia / 2.0
+    bot_y = oy1 + cover + tie_dia + dot_dia / 2.0
 
     # Top bars (4 dots)
-    x_step_top = (w - 2.0 * cover - dot_dia) / 3.0
+    x_step_top = (w - 2.0 * cover - 2.0 * tie_dia - dot_dia) / 3.0
     for k in range(4):
-        cx = ox1 + cover + dot_dia / 2.0 + k * x_step_top
+        cx = ox1 + cover + tie_dia + dot_dia / 2.0 + k * x_step_top
         draw_rebar_circle(target, (cx, top_y), diameter=dot_dia, layer=lay_rebar)
 
     # Bottom bars (3 dots)
-    x_step_bot = (w - 2.0 * cover - dot_dia) / 2.0
+    x_step_bot = (w - 2.0 * cover - 2.0 * tie_dia - dot_dia) / 2.0
     for k in range(3):
-        cx = ox1 + cover + dot_dia / 2.0 + k * x_step_bot
+        cx = ox1 + cover + tie_dia + dot_dia / 2.0 + k * x_step_bot
         draw_rebar_circle(target, (cx, bot_y), diameter=dot_dia, layer=lay_rebar)
 
     # Dimensions
@@ -581,29 +590,31 @@ def section_views(
     # Outer concrete outline
     draw_rectangle(target, origin=(ox2, oy2), width=w, height=d, close=True, layer=lay_beam)
 
-    # Stirrup
+    # Stirrup (Double-line)
     draw_stirrup_hooked(
         target,
         width=st_w,
         height=st_h,
         origin=(ox2 + cover, oy2 + cover),
+        tie_diameter=tie_dia,
         hook_length=(75.0 if is_metric else 3.0),
         corner="top_left",
+        double_line=True,
         layer=lay_stirrup,
     )
 
     # Top bars (2 dots at corners)
-    top_y2 = oy2 + d - cover - dot_dia / 2.0
-    bot_y2 = oy2 + cover + dot_dia / 2.0
+    top_y2 = oy2 + d - cover - tie_dia - dot_dia / 2.0
+    bot_y2 = oy2 + cover + tie_dia + dot_dia / 2.0
 
-    cx_left = ox2 + cover + dot_dia / 2.0
-    cx_right = ox2 + w - cover - dot_dia / 2.0
+    cx_left = ox2 + cover + tie_dia + dot_dia / 2.0
+    cx_right = ox2 + w - cover - tie_dia - dot_dia / 2.0
     draw_rebar_circle(target, (cx_left, top_y2), diameter=dot_dia, layer=lay_rebar)
     draw_rebar_circle(target, (cx_right, top_y2), diameter=dot_dia, layer=lay_rebar)
 
     # Bottom bars (3 dots)
     for k in range(3):
-        cx = ox2 + cover + dot_dia / 2.0 + k * x_step_bot
+        cx = ox2 + cover + tie_dia + dot_dia / 2.0 + k * x_step_bot
         draw_rebar_circle(target, (cx, bot_y2), diameter=dot_dia, layer=lay_rebar)
 
     # Dimensions

@@ -40,7 +40,8 @@ def main() -> None:
     )
 
     # 2. Export directly to DXF using struct_draw.save_dxf
-    out_path = Path("output_beam_profile.dxf")
+    out_dir = Path(__file__).resolve().parent
+    out_path = out_dir / "output" / "output_beam_profile.dxf"
     sd.save_dxf(beam_profile, out_path)
     print(f"Successfully generated continuous beam profile DXF: {out_path.resolve()}")
 

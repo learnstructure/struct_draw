@@ -51,7 +51,8 @@ def main() -> None:
     print(f"Longitudinal bars count: {len(column.longitudinal_bars)}, Stirrup: {column.stirrups.size} @ {column.stirrups.spacing_in}\"")
 
     # 2. Render using high-level struct_draw.save_dxf or struct_draw.render
-    out_path = Path("struct_draw/examples/output/output_column.dxf")
+    out_dir = Path(__file__).resolve().parent
+    out_path = out_dir / "output" / "output_column.dxf"
     try:
         sd.save_dxf(column, out_path)
         print(f"Successfully saved column drawing to: {out_path.resolve()}")
