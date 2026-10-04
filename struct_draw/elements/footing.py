@@ -94,6 +94,8 @@ def section_view(
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
+    scale: Any | None = None,
+    unit: Any | None = None,
 ) -> dict[str, Any]:
     """Draw a full cross-section of ``footing`` matching references/footing.py."""
     ox, oy = origin
@@ -114,8 +116,13 @@ def section_view(
     pcc_thick = footing.pcc_thickness_in
     soling_thick = footing.soling_thickness_in
 
-    # Determine metric vs imperial scale threshold
-    is_metric = L >= 300.0
+    scale = scale or getattr(footing, "scale", None)
+    unit = unit or getattr(footing, "unit", None)
+    if unit is not None:
+        from struct_draw.core.units import DrawingUnit
+        is_metric = DrawingUnit.from_str(unit).is_metric if isinstance(unit, str) else getattr(unit, "is_metric", True)
+    else:
+        is_metric = L >= 300.0
 
     # Beam dimensions
     pb_w = footing.plinth_beam_width_in or (230.0 if is_metric else 9.0)
@@ -125,10 +132,20 @@ def section_view(
 
     # Scale helpers for drawing features
     s_ext = 400.0 if is_metric else 16.0
-    txt_sz = 100.0 if is_metric else 4.0
-    hdr_txt_sz = 130.0 if is_metric else 5.0
-    st_sz = 80.0 if is_metric else 3.0
-    arr_sz = 50.0 if is_metric else 2.0
+    if scale is not None or unit is not None:
+        from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_25, SCALE_1_IN
+        from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+        d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+        d_scale = scale or (SCALE_1_25 if is_metric else SCALE_1_IN)
+        txt_sz = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+        hdr_txt_sz = DEFAULT_ANNOTATION_CONFIG.title_height(d_scale, d_unit)
+        st_sz = DEFAULT_ANNOTATION_CONFIG.dim_text_height(d_scale, d_unit)
+        arr_sz = DEFAULT_ANNOTATION_CONFIG.arrow_size(d_scale, d_unit)
+    else:
+        txt_sz = 100.0 if is_metric else 4.0
+        hdr_txt_sz = 130.0 if is_metric else 5.0
+        st_sz = 80.0 if is_metric else 3.0
+        arr_sz = 50.0 if is_metric else 2.0
     dot_r = 7.0 if is_metric else max(bar_dia / 2.0, 0.25)
     hook_h = 80.0 if is_metric else 3.0
     end_margin = 70.0 if is_metric else cover
@@ -501,6 +518,8 @@ def plan_view(
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
+    scale: Any | None = None,
+    unit: Any | None = None,
 ) -> dict[str, Any]:
     """Draw the plan view of ``footing`` matching references/footing.py."""
     pcx, pcy = origin
@@ -513,11 +532,25 @@ def plan_view(
     spacing = footing.bar_spacing_in
     foot_id = footing.name[1:] if footing.name.startswith("F") else footing.name
 
-    is_metric = L >= 300.0
+    scale = scale or getattr(footing, "scale", None)
+    unit = unit or getattr(footing, "unit", None)
+    if unit is not None:
+        from struct_draw.core.units import DrawingUnit
+        is_metric = DrawingUnit.from_str(unit).is_metric if isinstance(unit, str) else getattr(unit, "is_metric", True)
+    else:
+        is_metric = L >= 300.0
 
     # Scale helpers
-    txt_sz = 100.0 if is_metric else 4.0
-    sub_txt_sz = 80.0 if is_metric else 3.0
+    if scale is not None or unit is not None:
+        from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_25, SCALE_1_IN
+        from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+        d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+        d_scale = scale or (SCALE_1_25 if is_metric else SCALE_1_IN)
+        txt_sz = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+        sub_txt_sz = DEFAULT_ANNOTATION_CONFIG.dim_text_height(d_scale, d_unit)
+    else:
+        txt_sz = 100.0 if is_metric else 4.0
+        sub_txt_sz = 80.0 if is_metric else 3.0
     hk = 100.0 if is_metric else 4.0
     cen_ext = 500.0 if is_metric else 20.0
 

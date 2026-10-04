@@ -59,7 +59,10 @@ def main() -> None:
     # Convert calculation results into struct_draw FootingData
     footing_data = from_footing_result((design, detailing))
 
-    out_path = Path("output_footing_from_aci318.dxf")
+    out_dir = Path(__file__).resolve().parent / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = out_dir / "output_footing_from_aci318.dxf"
     sd.save_dxf(footing_data, out_path)
 
     print(f"Successfully generated footing drawing from ACI 318 result: {out_path.resolve()}")

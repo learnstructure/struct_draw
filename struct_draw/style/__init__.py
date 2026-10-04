@@ -20,8 +20,12 @@ from struct_draw.style.dimension_styles import (
     default_registry as default_dimension_styles,
 )
 from struct_draw.style.blocks import Block, BlockRegistry, default_registry as default_blocks
+from struct_draw.style.annotation_config import AnnotationConfig, DEFAULT_ANNOTATION_CONFIG
 
 __all__ = [
+    # annotation config
+    "AnnotationConfig",
+    "DEFAULT_ANNOTATION_CONFIG",
     # layers
     "Layer",
     "LayerRegistry",

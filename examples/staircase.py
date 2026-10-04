@@ -27,7 +27,7 @@ def main() -> None:
         waist=190.0,               # Waist slab thickness (190 mm)
         cover=30.0,                # Clear cover (30 mm)
         bottom_landing=1915.0,     # Distance from Grid 1 to 1st riser (1915 mm)
-        top_landing=285.0,         # Distance from last riser to Grid 2 (285 mm)
+        top_landing=1000.0,         # Distance from last riser to Grid 2 (285 mm)
         beam_left_w=230.0,         # Left beam width (230 mm)
         beam_left_h=350.0,         # Left beam depth (350 mm)
         beam_right_w=350.0,        # Right beam width (350 mm)
@@ -39,7 +39,10 @@ def main() -> None:
         nosing_bar_dia=8.0,        # Nosing rebar diameter (8 mm)
     )
 
-    out_path = Path("output_staircase_si.dxf")
+    out_dir = Path(__file__).resolve().parent / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = out_dir / "output_staircase_si.dxf"
     sd.save_dxf(stair_si, out_path)
     print(f"Saved SI staircase drawing to: {out_path.resolve()}")
 

@@ -185,6 +185,8 @@ def section_view(
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
+    scale: Any | None = None,
+    unit: Any | None = None,
 ) -> dict[str, Any]:
     """Draw a column cross-section with perimeter tie, 135° seismic hooks touching the rebar,
 
@@ -195,9 +197,22 @@ def section_view(
     d = column.section.depth_in
     cover = column.section.cover_in
 
-    is_metric = _detect_metric(column)
-    dim_offset = 350.0 if is_metric else max(8.0, min(w, d) * 0.45)
-    text_height = 120.0 if is_metric else 3.5
+    scale = scale or getattr(column, "scale", None)
+    unit = unit or getattr(column, "unit", None)
+    is_metric = unit.is_metric if unit is not None else _detect_metric(column)
+
+    if scale is not None or unit is not None:
+        from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_20, SCALE_1_IN
+        from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+        d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+        d_scale = scale or (SCALE_1_20 if is_metric else SCALE_1_IN)
+        text_height = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+        dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
+        dimstyle = "DIM_DETAIL" if is_metric else "Linear"
+    else:
+        dim_offset = 350.0 if is_metric else max(8.0, min(w, d) * 0.45)
+        text_height = 120.0 if is_metric else 3.5
+        dimstyle = "Linear"
     arrow_size = text_height * 0.65
 
     # Determine tie diameter and main bar diameter
@@ -351,6 +366,8 @@ def elevation_view(
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
     break_line_at: float | None = None,
+    scale: Any | None = None,
+    unit: Any | None = None,
 ) -> dict[str, Any]:
     """Draw a professional column elevation detailing adhering strictly to ACI 318 seismic provisions:
 
@@ -368,9 +385,22 @@ def elevation_view(
     H = column.height_in
     cover = column.section.cover_in
 
-    is_metric = _detect_metric(column)
-    dim_offset = 350.0 if is_metric else max(8.0, w * 0.45)
-    text_height = 120.0 if is_metric else 3.5
+    scale = scale or getattr(column, "scale", None)
+    unit = unit or getattr(column, "unit", None)
+    is_metric = unit.is_metric if unit is not None else _detect_metric(column)
+
+    if scale is not None or unit is not None:
+        from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_25, SCALE_1_IN
+        from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+        d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+        d_scale = scale or (SCALE_1_25 if is_metric else SCALE_1_IN)
+        text_height = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+        dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
+        dimstyle = "DIM_DETAIL" if is_metric else "Linear"
+    else:
+        dim_offset = 350.0 if is_metric else max(8.0, w * 0.45)
+        text_height = 120.0 if is_metric else 3.5
+        dimstyle = "Linear"
     arrow_size = text_height * 0.65
 
     # Framing member depths (upper beam and lower footing / foundation beam)
@@ -767,6 +797,8 @@ def drawing(
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
     layout: str = "side_by_side",
+    scale: Any = None,
+    unit: Any = None,
 ) -> dict[str, Any]:
     """Draw a complete ACI 318 column drawing with dynamic positioning of elevation and section.
 
@@ -785,16 +817,16 @@ def drawing(
 
     if layout == "stacked":
         # Draw section above elevation with safe dynamic clearance
-        refs_elev = elevation_view(target, column, origin=(ox, oy), title=title or f"ELEVATION OF {column.name}")
+        refs_elev = elevation_view(target, column, origin=(ox, oy), title=title or f"ELEVATION OF {column.name}", scale=scale, unit=unit)
         elev_bbox = refs_elev["bounding_box"]
         margin_y = max(d * 2.0, 40.0 if not is_metric else 1000.0)
         sec_y = elev_bbox[3] + margin_y
-        refs_sec = section_view(target, column, origin=(ox, sec_y), title=f"SECTION @ {column.name}")
+        refs_sec = section_view(target, column, origin=(ox, sec_y), title=f"SECTION @ {column.name}", scale=scale, unit=unit)
         sec_bbox = refs_sec["bounding_box"]
     else:
         # Default: side_by_side
         # 1. Draw Elevation on the left
-        refs_elev = elevation_view(target, column, origin=(ox, oy), title=title or f"ELEVATION OF {column.name}")
+        refs_elev = elevation_view(target, column, origin=(ox, oy), title=title or f"ELEVATION OF {column.name}", scale=scale, unit=unit)
         elev_bbox = refs_elev["bounding_box"]
 
         # 2. Compute dynamic margin to the right of elevation's outer bounding box (clearing all leader text)
@@ -803,7 +835,7 @@ def drawing(
         sec_y = oy + max(0.0, (H - d) / 2.0)
 
         # 3. Draw Section on the right
-        refs_sec = section_view(target, column, origin=(sec_x, sec_y), title=f"SECTION @ {column.name}")
+        refs_sec = section_view(target, column, origin=(sec_x, sec_y), title=f"SECTION @ {column.name}", scale=scale, unit=unit)
         sec_bbox = refs_sec["bounding_box"]
 
     total_bbox = (

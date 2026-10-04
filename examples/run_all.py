@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 # Define the directory containing Python files (use "." for the current folder)
-script_dir = Path("./examples")
+script_dir = Path(__file__).resolve().parent
 print(f"Running all Python scripts in: {script_dir.resolve()}")
 
 # Loop through and execute every .py file

@@ -37,11 +37,16 @@ def main() -> None:
             Rebar(mark="C1", size="16φ", quantity=4, length_in=3000.0),
         ),
         column_stirrups=Stirrup(size="8φ", spacing_in=100.0, legs=2),
+        scale=sd.SCALE_1_25,     # 1:25 scale for footing detailing
+        unit=sd.DrawingUnit.MM,  # Target modelspace units in millimeters
     )
 
-    out_path = Path("output_footing_si.dxf")
+    out_dir = Path(__file__).resolve().parent / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = out_dir / "output_footing_si.dxf"
     sd.save_dxf(footing_si, out_path)
-    print(f"Saved SI footing drawing to: {out_path.resolve()}")
+    print(f"Saved SI footing drawing to: {out_path.resolve()} (scale: {footing_si.scale.name}, unit: {footing_si.unit.name})")
 
 
 if __name__ == "__main__":

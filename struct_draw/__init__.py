@@ -39,6 +39,9 @@ from struct_draw.version import __version__
 
 # Top-level entry points.
 from struct_draw.adapters.struct_core_adapter import (
+    create_general_frame_data_from_model,
+    draw_frame_elevation_from_core,
+    draw_framing_plan_from_core,
     draw_from_core,
     draw_general_frame_from_core,
 )
@@ -69,16 +72,55 @@ from struct_draw.core.data import (
     TrussData,
 )
 from struct_draw.core.stirrup import StirrupGeometry, draw_double_line_stirrup
+from struct_draw.core.units import (
+    DrawingScale,
+    DrawingUnit,
+    SCALE_1_10,
+    SCALE_1_20,
+    SCALE_1_25,
+    SCALE_1_50,
+    SCALE_1_100,
+    SCALE_1_IN,
+    SCALE_1_2_IN,
+    SCALE_1_4_IN,
+    SCALE_1_8_IN,
+    SCALE_3_4_IN,
+    SCALE_3_IN,
+    default_scale_for_view,
+    drawing_unit_from_core,
+)
+from struct_draw.style.annotation_config import AnnotationConfig, DEFAULT_ANNOTATION_CONFIG
 
 
 __all__ = [
     "__version__",
+    # Units & Scales
+    "DrawingUnit",
+    "DrawingScale",
+    "AnnotationConfig",
+    "DEFAULT_ANNOTATION_CONFIG",
+    "drawing_unit_from_core",
+    "default_scale_for_view",
+    "SCALE_1_10",
+    "SCALE_1_20",
+    "SCALE_1_25",
+    "SCALE_1_50",
+    "SCALE_1_100",
+    "SCALE_1_IN",
+    "SCALE_1_2_IN",
+    "SCALE_1_4_IN",
+    "SCALE_1_8_IN",
+    "SCALE_3_4_IN",
+    "SCALE_3_IN",
     # Top-level
     "DrawingResult",
     "render",
     "save_dxf",
     "draw_from_core",
     "draw_general_frame_from_core",
+    "draw_framing_plan_from_core",
+    "draw_frame_elevation_from_core",
+    "create_general_frame_data_from_model",
     # Data
     "BeamData",
     "BeamProfileData",

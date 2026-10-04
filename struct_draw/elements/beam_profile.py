@@ -40,6 +40,8 @@ from struct_draw.core.composite import (
 )
 from struct_draw.core.data import BeamProfileData, Rebar
 from struct_draw.core.primitives import draw_circle, draw_mtext, draw_rectangle
+from struct_draw.core.units import DrawingScale, DrawingUnit
+from struct_draw.style.annotation_config import AnnotationConfig, DEFAULT_ANNOTATION_CONFIG
 
 
 def _clean_text(txt: str) -> str:
@@ -76,6 +78,8 @@ def profile_view(
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
+    scale: Any = None,
+    unit: Any = None,
 ) -> dict[str, Any]:
     """Draw a multi-span continuous beam longitudinal elevation (L-Section).
 
@@ -138,11 +142,21 @@ def profile_view(
     lay_break = "BREAK_LINE"
 
     # Scale-dependent graphical parameters
-    text_size = 150.0 if is_metric else 6.0
-    title_size = 250.0 if is_metric else 10.0
-    bubble_rad = 250.0 if is_metric else 12.0
-    dim_layer_gap = 300.0 if is_metric else 12.0
-    jog = 150.0 if is_metric else 6.0
+    active_scale = scale or getattr(beam_profile, "scale", None)
+    active_unit = unit or getattr(beam_profile, "unit", None)
+    ann = DEFAULT_ANNOTATION_CONFIG
+    if active_scale is not None or active_unit is not None:
+        text_size = ann.text_height(active_scale, active_unit)
+        title_size = ann.title_height(active_scale, active_unit)
+        bubble_rad = ann.bubble_radius(active_scale, active_unit)
+        dim_layer_gap = ann.dim_offset(active_scale, active_unit)
+        jog = text_size * 0.75
+    else:
+        text_size = 150.0 if is_metric else 6.0
+        title_size = 250.0 if is_metric else 10.0
+        bubble_rad = 250.0 if is_metric else 12.0
+        dim_layer_gap = 300.0 if is_metric else 12.0
+        jog = 150.0 if is_metric else 6.0
 
     # 1. Grid Centerlines & Grid Bubbles
     grid_labels = list(beam_profile.grid_labels) if beam_profile.grid_labels else []
@@ -488,6 +502,8 @@ def section_views(
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
+    scale: Any = None,
+    unit: Any = None,
 ) -> dict[str, Any]:
     """Draw cross-section views (Section 1-1 at Support and Section 2-2 at Mid-Span).
 
@@ -506,8 +522,15 @@ def section_views(
     lay_dim = "DIM_LINEAR"
     lay_text = "TEXT"
 
-    text_size = 125.0 if is_metric else 5.0
-    dim_gap = 150.0 if is_metric else 6.0
+    active_scale = scale or getattr(beam_profile, "scale", None)
+    active_unit = unit or getattr(beam_profile, "unit", None)
+    ann = DEFAULT_ANNOTATION_CONFIG
+    if active_scale is not None or active_unit is not None:
+        text_size = ann.text_height(active_scale, active_unit)
+        dim_gap = ann.dim_offset(active_scale, active_unit)
+    else:
+        text_size = 125.0 if is_metric else 5.0
+        dim_gap = 150.0 if is_metric else 6.0
     dot_dia = 20.0 if is_metric else 0.75
     section_spacing = w + (1200.0 if is_metric else 48.0)
 
@@ -658,6 +681,8 @@ def drawing(
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
+    scale: Any = None,
+    unit: Any = None,
 ) -> dict[str, Any]:
     """Draw the full continuous beam drawing sheet (Profile Elevation + Section Views).
 
@@ -668,14 +693,14 @@ def drawing(
     is_metric = beam_profile.is_metric
 
     # 1. Draw Profile View (Elevation)
-    refs_prof = profile_view(target, beam_profile, origin=(ox, oy), title=title)
+    refs_prof = profile_view(target, beam_profile, origin=(ox, oy), title=title, scale=scale, unit=unit)
 
     # Position section views below or alongside the profile
     total_len = sum(beam_profile.spans_in) if beam_profile.spans_in else 600.0
     sec_y = oy - (2500.0 if is_metric else 100.0)
     sec_x = ox + total_len / 2.0 - beam_profile.beam_width_in
 
-    refs_sec = section_views(target, beam_profile, origin=(sec_x, sec_y))
+    refs_sec = section_views(target, beam_profile, origin=(sec_x, sec_y), scale=scale, unit=unit)
 
     return {
         "profile": refs_prof,

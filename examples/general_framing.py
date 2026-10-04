@@ -6,10 +6,15 @@ Generates general arrangement drawings showing outlines of frame members
 rebar details.
 """
 
+from pathlib import Path
+
 from struct_draw import GeneralFrameData, TrussData, render, save_dxf
 
 
 def run():
+    out_dir = Path(__file__).resolve().parent / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     print("Generating General Framing Plan & Elevation drawing...")
     frame = GeneralFrameData.from_grid(
         name="OFFICE-FRAME-3BAY",
@@ -24,8 +29,9 @@ def run():
         is_metric=True,
     )
 
-    save_dxf(frame, "examples/output/general_frame.dxf")
-    print("  -> Saved examples/output/general_frame.dxf")
+    frame_out = out_dir / "general_frame.dxf"
+    save_dxf(frame, frame_out)
+    print(f"  -> Saved {frame_out.resolve()}")
 
     print("Generating Roof Truss Outline drawings...")
     # Pratt Truss
@@ -38,8 +44,9 @@ def run():
         web_depth=150.0,
         is_metric=True,
     )
-    save_dxf(pratt, "examples/output/truss_pratt.dxf")
-    print("  -> Saved examples/output/truss_pratt.dxf")
+    pratt_out = out_dir / "truss_pratt.dxf"
+    save_dxf(pratt, pratt_out)
+    print(f"  -> Saved {pratt_out.resolve()}")
 
     # Warren Truss
     warren = TrussData.warren(
@@ -51,8 +58,9 @@ def run():
         web_depth=150.0,
         is_metric=True,
     )
-    save_dxf(warren, "examples/output/truss_warren.dxf")
-    print("  -> Saved examples/output/truss_warren.dxf")
+    warren_out = out_dir / "truss_warren.dxf"
+    save_dxf(warren, warren_out)
+    print(f"  -> Saved {warren_out.resolve()}")
 
     # Pitched Truss
     pitched = TrussData.pitched(
@@ -64,8 +72,9 @@ def run():
         web_depth=100.0,
         is_metric=True,
     )
-    save_dxf(pitched, "examples/output/truss_pitched.dxf")
-    print("  -> Saved examples/output/truss_pitched.dxf")
+    pitched_out = out_dir / "truss_pitched.dxf"
+    save_dxf(pitched, pitched_out)
+    print(f"  -> Saved {pitched_out.resolve()}")
 
 
 if __name__ == "__main__":

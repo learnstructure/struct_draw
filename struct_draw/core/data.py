@@ -31,6 +31,19 @@ from typing import Sequence
 Point = tuple[float, float]
 
 
+def _resolve_unit_is_metric(unit: Any, fallback: bool) -> bool:
+    """Safely determine if unit is metric, handling DrawingUnit, string, or None."""
+    if unit is None:
+        return fallback
+    if isinstance(unit, str):
+        u = unit.strip().lower()
+        if u in ("in", "inch", "inches", "ft", "foot", "feet"):
+            return False
+        if u in ("mm", "cm", "m", "meter", "meters"):
+            return True
+    return getattr(unit, "is_metric", fallback)
+
+
 # ---------------------------------------------------------------------------
 # Bar / stirrup supporting classes
 # ---------------------------------------------------------------------------
@@ -155,11 +168,13 @@ class BeamData:
     stirrups: Stirrup = field(default_factory=Stirrup)
     schedule: Sequence[ScheduleRow] = field(default_factory=tuple)
     length_in: float = 240.0
+    scale: Any = None
+    unit: Any = None
 
     @property
     def is_metric(self) -> bool:
         """True if the beam dimensions are specified in SI metric units (mm)."""
-        return self.section.width_in >= 100.0 or self.section.depth_in >= 100.0
+        return _resolve_unit_is_metric(self.unit, self.section.width_in >= 100.0 or self.section.depth_in >= 100.0)
 
 
 @dataclass(frozen=True)
@@ -246,11 +261,13 @@ class BeamProfileData:
     stirrup: Stirrup = field(default_factory=Stirrup)
     support_stirrup_spacing_in: float = 4.0
     mid_stirrup_spacing_in: float = 6.0
+    scale: Any = None
+    unit: Any = None
 
     @property
     def is_metric(self) -> bool:
         """True if dimensions are specified in SI metric units (mm)."""
-        return self.beam_depth_in >= 100.0 or (len(self.spans_in) > 0 and self.spans_in[0] >= 300.0)
+        return _resolve_unit_is_metric(self.unit, self.beam_depth_in >= 100.0 or (len(self.spans_in) > 0 and self.spans_in[0] >= 300.0))
 
     @classmethod
     def from_metric(
@@ -273,6 +290,8 @@ class BeamProfileData:
         stirrup: Stirrup | None = None,
         support_stirrup_spacing: float | None = None,
         mid_stirrup_spacing: float | None = None,
+        scale: Any = None,
+        unit: Any = None,
     ) -> BeamProfileData:
         """Construct BeamProfileData directly from SI metric parameters."""
         _spans = spans if spans is not None else (5500.0, 4000.0, 3000.0, 4000.0, 5500.0)
@@ -303,6 +322,8 @@ class BeamProfileData:
             stirrup=stirrup or Stirrup(size="10mm dia", spacing_in=100.0),
             support_stirrup_spacing_in=_supp_spacing,
             mid_stirrup_spacing_in=_mid_spacing,
+            scale=scale,
+            unit=unit or "mm",
         )
 
     @classmethod
@@ -326,6 +347,8 @@ class BeamProfileData:
         stirrup: Stirrup | None = None,
         support_stirrup_spacing: float | None = None,
         mid_stirrup_spacing: float | None = None,
+        scale: Any = None,
+        unit: Any = None,
     ) -> BeamProfileData:
         """Construct BeamProfileData directly from Imperial parameters (in inches)."""
         _spans = spans if spans is not None else (216.0, 160.0, 120.0, 160.0, 216.0)
@@ -356,6 +379,8 @@ class BeamProfileData:
             stirrup=stirrup or Stirrup(size="#3", spacing_in=4.0),
             support_stirrup_spacing_in=_supp_spacing,
             mid_stirrup_spacing_in=_mid_spacing,
+            scale=scale,
+            unit=unit or "in",
         )
 
 
@@ -419,11 +444,13 @@ class FootingData:
     plinth_beam_depth_in: float = 0.0
     foundation_beam_width_in: float = 0.0
     foundation_beam_depth_in: float = 0.0
+    scale: Any = None
+    unit: Any = None
 
     @property
     def is_metric(self) -> bool:
         """True if the footing dimensions are specified in SI metric units (mm)."""
-        return self.length_in >= 300.0
+        return _resolve_unit_is_metric(self.unit, self.length_in >= 300.0)
 
     @classmethod
     def from_metric(
@@ -453,6 +480,8 @@ class FootingData:
         found_beam_h: float | None = None,
         column_bars: Sequence[Rebar] = (),
         column_stirrups: Stirrup | None = None,
+        scale: Any = None,
+        unit: Any = None,
     ) -> FootingData:
         """Construct FootingData directly from SI metric parameters."""
         _length = length if length is not None else 1600.0
@@ -501,6 +530,8 @@ class FootingData:
             foundation_beam_depth_in=_found_beam_h,
             column_bars=column_bars,
             column_stirrups=column_stirrups or Stirrup(size="8mm dia", spacing_in=100.0),
+            scale=scale,
+            unit=unit or "mm",
         )
 
     @classmethod
@@ -531,6 +562,8 @@ class FootingData:
         found_beam_h: float | None = None,
         column_bars: Sequence[Rebar] = (),
         column_stirrups: Stirrup | None = None,
+        scale: Any = None,
+        unit: Any = None,
     ) -> FootingData:
         """Construct FootingData directly from Imperial parameters (in inches)."""
         _length = length if length is not None else 64.0
@@ -579,6 +612,8 @@ class FootingData:
             foundation_beam_depth_in=_found_beam_h,
             column_bars=column_bars,
             column_stirrups=column_stirrups or Stirrup(size="#3", spacing_in=6.0),
+            scale=scale,
+            unit=unit or "in",
         )
 
 
@@ -655,6 +690,8 @@ class CombinedFootingData:
     column_bars: Sequence[Rebar] = field(default_factory=tuple)
     column_stirrups: Stirrup = field(default_factory=Stirrup)
     development_length_in: float = 24.0
+    scale: Any = None
+    unit: Any = None
 
     @property
     def total_length_in(self) -> float:
@@ -664,7 +701,7 @@ class CombinedFootingData:
     @property
     def is_metric(self) -> bool:
         """True if dimensions are specified in SI metric units (mm)."""
-        return self.total_length_in >= 300.0
+        return _resolve_unit_is_metric(self.unit, self.total_length_in >= 300.0)
 
     @classmethod
     def from_metric(
@@ -867,11 +904,13 @@ class ColumnData:
     longitudinal_bars: Sequence[Rebar] = field(default_factory=tuple)
     stirrups: Stirrup = field(default_factory=Stirrup)
     schedule: Sequence[ScheduleRow] = field(default_factory=tuple)
+    scale: Any = None
+    unit: Any = None
 
     @property
     def is_metric(self) -> bool:
         """True if the column dimensions are specified in SI metric units (mm)."""
-        return self.section.width_in >= 100.0 or self.section.depth_in >= 100.0
+        return _resolve_unit_is_metric(self.unit, self.section.width_in >= 100.0 or self.section.depth_in >= 100.0)
 
 
 @dataclass(frozen=True)
@@ -934,11 +973,16 @@ class StaircaseData:
     dist_bar_spacing_in: float = 6.0
     nosing_bar_dia_in: float = 0.3125
     landings: int = 1
+    scale: Any = None
+    unit: Any = None
 
     @property
     def is_metric(self) -> bool:
         """True if dimensions are specified in SI metric units (mm)."""
-        return self.tread_depth_in >= 100.0 or self.flight_width_in >= 300.0 or self.slab_thickness_in >= 100.0
+        return _resolve_unit_is_metric(
+            self.unit,
+            self.tread_depth_in >= 100.0 or self.flight_width_in >= 300.0 or self.slab_thickness_in >= 100.0,
+        )
 
     @property
     def waist_thickness_in(self) -> float:
@@ -1103,11 +1147,13 @@ class SlabData:
     cover_in: float = 0.75
     top_bar: Rebar | None = None
     bottom_bar: Rebar | None = None
+    scale: Any = None
+    unit: Any = None
 
     @property
     def is_metric(self) -> bool:
         """True if the slab dimensions are specified in SI metric units (mm)."""
-        return self.thickness_in >= 50.0 or self.width_in >= 500.0
+        return _resolve_unit_is_metric(self.unit, self.thickness_in >= 50.0 or self.width_in >= 500.0)
 
 
 # ---------------------------------------------------------------------------
@@ -1216,6 +1262,8 @@ class GeneralFrameData:
     show_grid_bubbles: bool = True
     show_level_markers: bool = True
     is_metric: bool = False
+    scale: Any = None
+    unit: Any = None
 
     @classmethod
     def from_grid(
@@ -1234,6 +1282,8 @@ class GeneralFrameData:
         title: str = "BUILDING FRAME ELEVATION",
         view_mode: str = "elevation",
         is_metric: bool | None = None,
+        scale: Any = None,
+        unit: Any = None,
     ) -> GeneralFrameData:
         """Create a regular multi-bay, multi-story building frame elevation."""
         if is_metric is None:
@@ -1358,6 +1408,8 @@ class GeneralFrameData:
             title=title,
             view_mode=view_mode,
             is_metric=is_metric,
+            scale=scale,
+            unit=unit,
         )
 
 
@@ -1378,6 +1430,8 @@ class FramingPlanData:
     level_name: str = "FIRST FLOOR (EL. +12'-0\")"
     is_metric: bool = False
     secondary_beams: Sequence[tuple[int, int, str]] = field(default_factory=tuple)  # (bay_x, bay_y, "mid_x"|"mid_y")
+    scale: Any = None
+    unit: Any = None
 
 
 @dataclass(frozen=True)
@@ -1397,6 +1451,8 @@ class FrameElevationData:
     braced_bays: Sequence[tuple[int, int]] = field(default_factory=tuple)
     title: str = "FRAME ELEVATION - GRID A"
     is_metric: bool = False
+    scale: Any = None
+    unit: Any = None
 
 
 @dataclass(frozen=True)

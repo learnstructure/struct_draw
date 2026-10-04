@@ -49,7 +49,10 @@ def main() -> None:
         column_stirrups=Stirrup(size="8φ", spacing_in=100.0, legs=2),
     )
 
-    si_out_path = Path("output_combined_footing_si.dxf")
+    out_dir = Path(__file__).resolve().parent / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    si_out_path = out_dir / "output_combined_footing_si.dxf"
     sd.save_dxf(cf_si, si_out_path)
     print(f"Saved SI combined footing drawing to: {si_out_path.resolve()}")
 
@@ -85,7 +88,7 @@ def main() -> None:
         column_stirrups=Stirrup(size="#3", spacing_in=6.0, legs=2),
     )
 
-    imp_out_path = Path("output_combined_footing_imperial.dxf")
+    imp_out_path = out_dir / "output_combined_footing_imperial.dxf"
     sd.save_dxf(cf_imperial, imp_out_path)
     print(f"Saved Imperial combined footing drawing to: {imp_out_path.resolve()}")
 

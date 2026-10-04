@@ -81,11 +81,24 @@ def plan_view(
 ) -> dict[str, Any]:
     """Draw a structural framing plan view (columns, beams, grids, dimensions, callouts)."""
     ox, oy = origin
+    scale = kwargs.get("scale", getattr(data, "scale", None))
+    unit = kwargs.get("unit", getattr(data, "unit", None))
+    is_metric = unit.is_metric if unit is not None else _detect_metric(data)
 
-    is_metric = _detect_metric(data)
-    text_size = 200.0 if is_metric else 8.0
-    bubble_radius = 250.0 if is_metric else 10.0
-    dim_offset = 600.0 if is_metric else 24.0
+    if scale is not None or unit is not None:
+        from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_100, SCALE_1_8_IN
+        from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+        d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+        d_scale = scale or (SCALE_1_100 if is_metric else SCALE_1_8_IN)
+        text_size = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+        bubble_radius = DEFAULT_ANNOTATION_CONFIG.bubble_radius(d_scale, d_unit)
+        dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
+        dimstyle = "DIM_PLAN" if is_metric else "Linear"
+    else:
+        text_size = 200.0 if is_metric else 8.0
+        bubble_radius = 250.0 if is_metric else 10.0
+        dim_offset = 600.0 if is_metric else 24.0
+        dimstyle = "Metric" if is_metric else "Linear"
 
     # Extract or build grid coordinates
     if isinstance(data, FramingPlanData):
@@ -136,14 +149,34 @@ def plan_view(
                 plan_title = f"{raw_title} - FRAMING PLAN"
         sec_beams = ()
 
-    # Compute absolute grid line positions
-    x_positions = [ox]
-    for b in bays_x:
-        x_positions.append(x_positions[-1] + b)
+    # Map nodes to absolute plan coordinates
+    plan_coords: dict[Any, tuple[float, float]] = {}
+    x_min_ref = 0.0
+    y_min_ref = 0.0
+    if isinstance(data, GeneralFrameData):
+        if data.grid_x:
+            x_min_ref = min(g.coord for g in data.grid_x)
+        elif data.nodes:
+            x_min_ref = min(n.x for n in data.nodes)
+        if data.grid_y:
+            y_min_ref = min(g.coord for g in data.grid_y)
+        elif data.nodes:
+            y_min_ref = min(n.y for n in data.nodes)
+        for n in data.nodes:
+            plan_coords[n.id] = (ox + (n.x - x_min_ref), oy + (n.y - y_min_ref))
 
-    y_positions = [oy]
-    for b in bays_y:
-        y_positions.append(y_positions[-1] + b)
+    # Compute absolute grid line positions
+    if isinstance(data, GeneralFrameData) and data.grid_x and data.grid_y:
+        x_positions = [ox + (g.coord - x_min_ref) for g in data.grid_x]
+        y_positions = [oy + (g.coord - y_min_ref) for g in data.grid_y]
+    else:
+        x_positions = [ox]
+        for b in bays_x:
+            x_positions.append(x_positions[-1] + b)
+
+        y_positions = [oy]
+        for b in bays_y:
+            y_positions.append(y_positions[-1] + b)
 
     x_min, x_max = x_positions[0], x_positions[-1]
     y_min, y_max = y_positions[0], y_positions[-1]
@@ -209,45 +242,88 @@ def plan_view(
             layer="TEXT",
         )
 
-    # 3. Draw Beams (Double lines representing beam width)
-    # Horizontal beams along Y grid lines
-    half_bw = beam_w / 2.0
-    for j, y in enumerate(y_positions):
-        for i in range(len(bays_x)):
-            x1 = x_positions[i] + col_w / 2.0
-            x2 = x_positions[i + 1] - col_w / 2.0
-            if x2 > x1:
-                # Top edge & Bottom edge of beam
-                draw_line(target, (x1, y + half_bw), (x2, y + half_bw), layer="BEAM")
-                draw_line(target, (x1, y - half_bw), (x2, y - half_bw), layer="BEAM")
-                # Beam label
-                b_name = f"B{i+1}"
-                draw_text(
-                    target,
-                    b_name,
-                    position=((x1 + x2) / 2.0 - text_size * 0.6, y + half_bw + text_size * 0.3),
-                    height=text_size * 0.75,
-                    layer="TEXT",
-                )
+    # Check if explicit members are available for realistic drawing
+    has_member_beams = False
+    has_member_cols = False
+    if isinstance(data, GeneralFrameData) and data.members:
+        has_member_beams = any(m.member_type.lower() in ("beam", "joist", "girder", "truss", "chord") for m in data.members)
+        has_member_cols = any(m.member_type.lower() == "column" for m in data.members)
 
-    # Vertical beams along X grid lines
-    for i, x in enumerate(x_positions):
-        for j in range(len(bays_y)):
-            y1 = y_positions[j] + col_d / 2.0
-            y2 = y_positions[j + 1] - col_d / 2.0
-            if y2 > y1:
-                # Left edge & Right edge of beam
-                draw_line(target, (x - half_bw, y1), (x - half_bw, y2), layer="BEAM")
-                draw_line(target, (x + half_bw, y1), (x + half_bw, y2), layer="BEAM")
-                # Beam label
-                b_name = f"B{len(bays_x) + j + 1}"
+    # 3. Draw Beams
+    if has_member_beams and isinstance(data, GeneralFrameData):
+        for mem in data.members:
+            m_type = mem.member_type.lower()
+            if m_type not in ("beam", "joist", "girder", "truss", "chord"):
+                continue
+            p1 = plan_coords.get(mem.start_node)
+            p2 = plan_coords.get(mem.end_node)
+            if not p1 or not p2:
+                continue
+            x1, y1 = p1
+            x2, y2 = p2
+            dx = x2 - x1
+            dy = y2 - y1
+            L = math.hypot(dx, dy)
+            if L <= 1e-3:
+                continue
+            bw = mem.width_in if mem.width_in > 0 else beam_w
+            half_bw = bw / 2.0
+            ux, uy = -dy / L, dx / L  # normal perpendicular to beam
+
+            p1_left = (x1 + ux * half_bw, y1 + uy * half_bw)
+            p2_left = (x2 + ux * half_bw, y2 + uy * half_bw)
+            p1_right = (x1 - ux * half_bw, y1 - uy * half_bw)
+            p2_right = (x2 - ux * half_bw, y2 - uy * half_bw)
+
+            draw_line(target, p1_left, p2_left, layer="BEAM")
+            draw_line(target, p1_right, p2_right, layer="BEAM")
+            draw_line(target, (x1, y1), (x2, y2), layer="CENTERLINE")
+
+            if mem.name and getattr(data, "show_member_tags", True):
+                mid_x = (x1 + x2) / 2.0
+                mid_y = (y1 + y2) / 2.0
                 draw_text(
                     target,
-                    b_name,
-                    position=(x + half_bw + text_size * 0.3, (y1 + y2) / 2.0 - text_size * 0.35),
+                    mem.name,
+                    position=(mid_x + ux * (half_bw + text_size * 0.2), mid_y + uy * (half_bw + text_size * 0.2)),
                     height=text_size * 0.75,
                     layer="TEXT",
                 )
+    else:
+        # Fallback: Horizontal beams along Y grid lines
+        half_bw = beam_w / 2.0
+        for j, y in enumerate(y_positions):
+            for i in range(len(bays_x)):
+                x1 = x_positions[i] + col_w / 2.0
+                x2 = x_positions[i + 1] - col_w / 2.0
+                if x2 > x1:
+                    draw_line(target, (x1, y + half_bw), (x2, y + half_bw), layer="BEAM")
+                    draw_line(target, (x1, y - half_bw), (x2, y - half_bw), layer="BEAM")
+                    b_name = f"B{i+1}"
+                    draw_text(
+                        target,
+                        b_name,
+                        position=((x1 + x2) / 2.0 - text_size * 0.6, y + half_bw + text_size * 0.3),
+                        height=text_size * 0.75,
+                        layer="TEXT",
+                    )
+
+        # Fallback: Vertical beams along X grid lines
+        for i, x in enumerate(x_positions):
+            for j in range(len(bays_y)):
+                y1 = y_positions[j] + col_d / 2.0
+                y2 = y_positions[j + 1] - col_d / 2.0
+                if y2 > y1:
+                    draw_line(target, (x - half_bw, y1), (x - half_bw, y2), layer="BEAM")
+                    draw_line(target, (x + half_bw, y1), (x + half_bw, y2), layer="BEAM")
+                    b_name = f"B{len(bays_x) + j + 1}"
+                    draw_text(
+                        target,
+                        b_name,
+                        position=(x + half_bw + text_size * 0.3, (y1 + y2) / 2.0 - text_size * 0.35),
+                        height=text_size * 0.75,
+                        layer="TEXT",
+                    )
 
     # Optional secondary beams
     for bx_idx, by_idx, orient in sec_beams:
@@ -279,31 +355,67 @@ def plan_view(
                     layer="TEXT",
                 )
 
-    # 4. Draw Columns at Grid Intersections
-    c_count = 1
-    for i, x in enumerate(x_positions):
-        for j, y in enumerate(y_positions):
+    # 4. Draw Columns
+    if has_member_cols and isinstance(data, GeneralFrameData):
+        seen_cols = set()
+        c_count = 1
+        for mem in data.members:
+            if mem.member_type.lower() != "column":
+                continue
+            p = plan_coords.get(mem.start_node) or plan_coords.get(mem.end_node)
+            if not p:
+                continue
+            cx, cy = p
+            pos_key = (round(cx, 1), round(cy, 1))
+            if pos_key in seen_cols:
+                continue
+            seen_cols.add(pos_key)
+
+            cw = mem.width_in if mem.width_in > 0 else col_w
+            cd = mem.depth_in if mem.depth_in > 0 else col_d
             draw_rectangle(
                 target,
-                origin=(x - col_w / 2.0, y - col_d / 2.0),
-                width=col_w,
-                height=col_d,
+                origin=(cx - cw / 2.0, cy - cd / 2.0),
+                width=cw,
+                height=cd,
                 close=True,
                 layer="COLUMN",
             )
-            # Column mark
-            c_tag = f"C{c_count}"
-            draw_text(
-                target,
-                c_tag,
-                position=(x - col_w * 0.4, y - col_d * 0.25),
-                height=text_size * 0.6,
-                layer="TEXT",
-            )
+            c_tag = mem.name or f"C{c_count}"
+            if getattr(data, "show_member_tags", True):
+                draw_text(
+                    target,
+                    c_tag,
+                    position=(cx - cw * 0.4, cy - cd * 0.25),
+                    height=text_size * 0.6,
+                    layer="TEXT",
+                )
             c_count += 1
+    else:
+        # Fallback: Grid Intersections
+        c_count = 1
+        for i, x in enumerate(x_positions):
+            for j, y in enumerate(y_positions):
+                draw_rectangle(
+                    target,
+                    origin=(x - col_w / 2.0, y - col_d / 2.0),
+                    width=col_w,
+                    height=col_d,
+                    close=True,
+                    layer="COLUMN",
+                )
+                c_tag = f"C{c_count}"
+                draw_text(
+                    target,
+                    c_tag,
+                    position=(x - col_w * 0.4, y - col_d * 0.25),
+                    height=text_size * 0.6,
+                    layer="TEXT",
+                )
+                c_count += 1
 
     # 5. Dimensions
-    dimstyle = "Metric" if is_metric else "Linear"
+    # dimstyle already configured above
     # Bottom X bay dimensions
     for i in range(len(bays_x)):
         x1 = x_positions[i]
@@ -386,12 +498,26 @@ def elevation_view(
 ) -> dict[str, Any]:
     """Draw a 2D structural frame elevation (columns, beams, braces, levels, grids, dimensions)."""
     ox, oy = origin
-    is_metric = _detect_metric(data)
+    scale = kwargs.get("scale", getattr(data, "scale", None))
+    unit = kwargs.get("unit", getattr(data, "unit", None))
+    is_metric = unit.is_metric if unit is not None else _detect_metric(data)
 
-    text_size = 200.0 if is_metric else 8.0
-    bubble_radius = 250.0 if is_metric else 10.0
-    dim_offset = 600.0 if is_metric else 24.0
-    level_ext = 900.0 if is_metric else 36.0
+    if scale is not None or unit is not None:
+        from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_50, SCALE_1_4_IN
+        from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+        d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+        d_scale = scale or (SCALE_1_50 if is_metric else SCALE_1_4_IN)
+        text_size = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+        bubble_radius = DEFAULT_ANNOTATION_CONFIG.bubble_radius(d_scale, d_unit)
+        dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
+        level_ext = dim_offset * 1.5
+        dimstyle = "DIM_ELEV" if is_metric else "Linear"
+    else:
+        text_size = 200.0 if is_metric else 8.0
+        bubble_radius = 250.0 if is_metric else 10.0
+        dim_offset = 600.0 if is_metric else 24.0
+        level_ext = 900.0 if is_metric else 36.0
+        dimstyle = "Metric" if is_metric else "Linear"
 
     # Build node and member geometry
     if isinstance(data, FrameElevationData):
@@ -445,9 +571,10 @@ def elevation_view(
     x_vals: list[float] = []
     y_vals: list[float] = []
 
+    has_3d_z = any(abs(getattr(nd, "z", 0.0)) > 1e-4 for nd in frame.nodes)
     for n in frame.nodes:
         nx = ox + n.x
-        ny = oy + n.y
+        ny = oy + (n.z if has_3d_z else n.y)
         node_coords[n.id] = (nx, ny)
         x_vals.append(nx)
         y_vals.append(ny)
@@ -577,8 +704,7 @@ def elevation_view(
                     layer="TEXT",
                 )
 
-    # 4. Dimensions
-    dimstyle = "Metric" if is_metric else "Linear"
+    # dimstyle already configured above
 
     # Story height dimensions on the LEFT side
     if frame.levels and len(frame.levels) >= 2:
@@ -664,7 +790,9 @@ def truss_view(
 ) -> dict[str, Any]:
     """Draw a roof or bridge truss outline view without rebar (Pratt, Howe, Warren, Pitched)."""
     ox, oy = origin
-    is_metric = data.is_metric
+    scale = kwargs.get("scale", getattr(data, "scale", None))
+    unit = kwargs.get("unit", getattr(data, "unit", None))
+    is_metric = unit.is_metric if unit is not None else data.is_metric
 
     span = data.span_in
     height = data.height_in
@@ -674,8 +802,18 @@ def truss_view(
     c_depth = data.chord_depth_in
     w_depth = data.web_depth_in
 
-    text_size = 200.0 if is_metric else 8.0
-    dim_offset = 500.0 if is_metric else 20.0
+    if scale is not None or unit is not None:
+        from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_50, SCALE_1_4_IN
+        from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+        d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+        d_scale = scale or (SCALE_1_50 if is_metric else SCALE_1_4_IN)
+        text_size = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+        dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
+        dimstyle = "DIM_ELEV" if is_metric else "Linear"
+    else:
+        text_size = 200.0 if is_metric else 8.0
+        dim_offset = 500.0 if is_metric else 20.0
+        dimstyle = "Metric" if is_metric else "Linear"
     truss_title = title or data.title
 
     # Generate Bottom & Top chord nodes
@@ -789,8 +927,7 @@ def truss_view(
             else:
                 _draw_angled_member(target, bot_nodes[i], top_nodes[i + 1], depth=w_depth, layer="CONC_OUTLINE")
 
-    # 4. Dimensions
-    dimstyle = "Metric" if is_metric else "Linear"
+    # dimstyle already configured above
 
     # Bottom panel dimensions
     for i in range(num_panels):

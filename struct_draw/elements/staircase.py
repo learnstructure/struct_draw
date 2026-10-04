@@ -101,6 +101,8 @@ def section_view(
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
+    scale: Any | None = None,
+    unit: Any | None = None,
 ) -> dict[str, Any]:
     """Draw a detailed RCC staircase section view (Flight elevation with reinforcement).
 
@@ -116,7 +118,9 @@ def section_view(
         Optional view title override.
     """
     ox, oy = origin
-    is_metric = stair.is_metric
+    scale = scale or getattr(stair, "scale", None)
+    unit = unit or getattr(stair, "unit", None)
+    is_metric = unit.is_metric if unit is not None else stair.is_metric
 
     # Geometry parameters
     beam_left_w = stair.beam_left_width_in
@@ -151,9 +155,18 @@ def section_view(
     # -----------------------------------------------------------------------
     ext_top = height + (300.0 if is_metric else 12.0)
     ext_bot = 1000.0 if is_metric else 40.0
-    bubble_rad = 100.0 if is_metric else 4.0
-    text_sz = 120.0 if is_metric else 5.0
-    st_sz = 80.0 if is_metric else 3.5
+    if scale is not None or unit is not None:
+        from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_25, SCALE_1_IN
+        from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+        d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+        d_scale = scale or (SCALE_1_25 if is_metric else SCALE_1_IN)
+        text_sz = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+        st_sz = DEFAULT_ANNOTATION_CONFIG.dim_text_height(d_scale, d_unit)
+        bubble_rad = DEFAULT_ANNOTATION_CONFIG.bubble_radius(d_scale, d_unit)
+    else:
+        bubble_rad = 100.0 if is_metric else 4.0
+        text_sz = 120.0 if is_metric else 5.0
+        st_sz = 80.0 if is_metric else 3.5
 
     # Grid 1 (Left)
     draw_line(target, (ox, oy - ext_bot - beam_left_h), (ox, oy + ext_top), layer="CENTERLINE")
@@ -557,6 +570,8 @@ def plan_view(
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
+    scale: Any | None = None,
+    unit: Any | None = None,
 ) -> dict[str, Any]:
     """Draw a staircase plan view (showing two flights with continuous UP walkline).
 
@@ -572,7 +587,9 @@ def plan_view(
         Optional view title override.
     """
     ox, oy = origin
-    is_metric = stair.is_metric
+    scale = scale or getattr(stair, "scale", None)
+    unit = unit or getattr(stair, "unit", None)
+    is_metric = unit.is_metric if unit is not None else stair.is_metric
 
     flight_w = stair.flight_width_in
     tread = stair.tread_depth_in

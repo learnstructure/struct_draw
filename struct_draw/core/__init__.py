@@ -18,7 +18,23 @@ imports from :mod:`struct_draw.core`. Nothing below this layer
 imports from above.
 """
 
-from struct_draw.core import data, document, primitives, composite, sheet, viewport, geometry, stirrup  # noqa: F401
+from struct_draw.core import data, document, primitives, composite, sheet, viewport, geometry, stirrup, units  # noqa: F401
+from struct_draw.core.units import (
+    DrawingScale,
+    DrawingUnit,
+    SCALE_1_10,
+    SCALE_1_20,
+    SCALE_1_25,
+    SCALE_1_50,
+    SCALE_1_100,
+    SCALE_1_IN,
+    SCALE_1_2_IN,
+    SCALE_1_4_IN,
+    SCALE_1_8_IN,
+    SCALE_3_4_IN,
+    SCALE_3_IN,
+    drawing_unit_from_core,
+)
 from struct_draw.core.data import (
     BeamData,
     ColumnData,
@@ -45,6 +61,21 @@ __all__ = [
     "viewport",
     "geometry",
     "stirrup",
+    "units",
+    "DrawingUnit",
+    "DrawingScale",
+    "drawing_unit_from_core",
+    "SCALE_1_10",
+    "SCALE_1_20",
+    "SCALE_1_25",
+    "SCALE_1_50",
+    "SCALE_1_100",
+    "SCALE_1_IN",
+    "SCALE_1_2_IN",
+    "SCALE_1_4_IN",
+    "SCALE_1_8_IN",
+    "SCALE_3_4_IN",
+    "SCALE_3_IN",
     "BeamData",
     "ColumnData",
     "FootingData",

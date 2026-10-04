@@ -19,6 +19,7 @@ from struct_draw.core.data import BeamProfileData, Rebar, Stirrup
 
 def main() -> None:
     # 1. Define a 5-span continuous beam profile in SI Metric units (mm)
+    # Explicitly set DrawingScale (1:25 for detailing) and DrawingUnit (MM)
     beam_profile = BeamProfileData.from_metric(
         name="L-SECTION OF BEAM ALONG GRIDS A-A",
         grid_line_name="A-A",
@@ -37,7 +38,15 @@ def main() -> None:
         top_bars=(Rebar(mark="TB1", size="20mm dia", quantity=2),),
         bottom_bars=(Rebar(mark="BB1", size="20mm dia", quantity=3),),
         top_extra_bars=(Rebar(mark="EB1", size="16mm dia", quantity=2),),
+        scale=sd.SCALE_1_25,                           # Standard 1:25 detailing scale
+        unit=sd.DrawingUnit.MM,                        # Drawing unit in millimeters
     )
+
+    print(f"Beam profile configured with unit: {beam_profile.unit.name}, scale: {beam_profile.scale.name}")
+    print(f"  Target paper standards at 1:25:")
+    print(f"  - Dimension text: 2.0 mm print -> {2.0 * beam_profile.scale.ratio:.1f} mm modelspace")
+    print(f"  - General notes : 3.0 mm print -> {3.0 * beam_profile.scale.ratio:.1f} mm modelspace")
+    print(f"  - View title    : 5.0 mm print -> {5.0 * beam_profile.scale.ratio:.1f} mm modelspace")
 
     # 2. Export directly to DXF using struct_draw.save_dxf
     out_dir = Path(__file__).resolve().parent

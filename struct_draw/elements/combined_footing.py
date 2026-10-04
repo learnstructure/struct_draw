@@ -89,6 +89,8 @@ def section_view(
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
+    scale: Any | None = None,
+    unit: Any | None = None,
 ) -> dict[str, Any]:
     """Draw a full cross-section view of a combined footing."""
     ox, oy = origin
@@ -113,11 +115,27 @@ def section_view(
     pcc_thick = combined_footing.pcc_thickness_in
     soling_thick = combined_footing.soling_thickness_in
 
-    is_metric = L >= 300.0
+    scale = scale or getattr(combined_footing, "scale", None)
+    unit = unit or getattr(combined_footing, "unit", None)
+    if unit is not None:
+        from struct_draw.core.units import DrawingUnit
+        is_metric = DrawingUnit.from_str(unit).is_metric if isinstance(unit, str) else getattr(unit, "is_metric", True)
+    else:
+        is_metric = L >= 300.0
     s = 1.0 if is_metric else 1.0 / 25.4
-    txt_sz = 100.0 * s
-    st_sz = 80.0 * s
-    title_sz = 130.0 * s
+
+    if scale is not None or unit is not None:
+        from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_25, SCALE_1_IN
+        from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+        d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+        d_scale = scale or (SCALE_1_25 if is_metric else SCALE_1_IN)
+        txt_sz = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+        st_sz = DEFAULT_ANNOTATION_CONFIG.dim_text_height(d_scale, d_unit)
+        title_sz = DEFAULT_ANNOTATION_CONFIG.title_height(d_scale, d_unit)
+    else:
+        txt_sz = 100.0 * s
+        st_sz = 80.0 * s
+        title_sz = 130.0 * s
 
     pb_w = combined_footing.plinth_beam_width_in or (230.0 if is_metric else 9.0)
     pb_h = combined_footing.plinth_beam_depth_in or (350.0 if is_metric else 14.0)
@@ -530,6 +548,8 @@ def plan_view(
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
+    scale: Any | None = None,
+    unit: Any | None = None,
 ) -> dict[str, Any]:
     """Draw a plan view of a combined footing."""
     ox, oy = origin
@@ -545,10 +565,25 @@ def plan_view(
     bar_dia = combined_footing.bar_dia_in
     bar_spacing = combined_footing.bar_spacing_in
 
-    is_metric = L >= 300.0
+    scale = scale or getattr(combined_footing, "scale", None)
+    unit = unit or getattr(combined_footing, "unit", None)
+    if unit is not None:
+        from struct_draw.core.units import DrawingUnit
+        is_metric = DrawingUnit.from_str(unit).is_metric if isinstance(unit, str) else getattr(unit, "is_metric", True)
+    else:
+        is_metric = L >= 300.0
     s = 1.0 if is_metric else 1.0 / 25.4
-    txt_sz = 100.0 * s
-    st_sz = 80.0 * s
+
+    if scale is not None or unit is not None:
+        from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_25, SCALE_1_IN
+        from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+        d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+        d_scale = scale or (SCALE_1_25 if is_metric else SCALE_1_IN)
+        txt_sz = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+        st_sz = DEFAULT_ANNOTATION_CONFIG.dim_text_height(d_scale, d_unit)
+    else:
+        txt_sz = 100.0 * s
+        st_sz = 80.0 * s
 
     cx1 = ox
     cx2 = ox + col_sp

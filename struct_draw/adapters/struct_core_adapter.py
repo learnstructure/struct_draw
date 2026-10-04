@@ -14,6 +14,7 @@ from StructuralModel or Project.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 try:
@@ -54,6 +55,17 @@ from struct_draw.core.data import (
     TrussData,
 )
 from struct_draw.core.document import new_drawing, register_all_styles
+from struct_draw.core.units import (
+    DrawingScale,
+    DrawingUnit,
+    SCALE_1_100,
+    SCALE_1_50,
+    SCALE_1_20,
+    SCALE_1_4_IN,
+    SCALE_1_8_IN,
+    SCALE_1_IN,
+    drawing_unit_from_core,
+)
 from struct_draw.elements import (
     beam,
     beam_profile,
@@ -79,9 +91,14 @@ def draw_from_core(
     model_or_project: Optional[Union[StructuralModel, Project]] = None,
     *,
     view_type: str = "auto",
+    scale: Optional[Union[str, DrawingScale]] = None,
+    unit: Optional[Union[str, DrawingUnit]] = None,
+    plan_scale: Optional[Union[str, DrawingScale]] = None,
+    elev_scale: Optional[Union[str, DrawingScale]] = None,
+    detail_scale: Optional[Union[str, DrawingScale]] = None,
 ) -> Dict[str, Any]:
     """
-    Render struct_core results into DXF drawings.
+    Render struct_core results into DXF drawings with full unit and scale awareness.
 
     Dispatches across all seven supported structural member types:
     Beam, BeamProfile, Footing, CombinedFooting, Column, Staircase, Slab.
@@ -98,6 +115,16 @@ def draw_from_core(
         Matching structural model or project container.
     view_type : str, optional
         "auto", "section", "plan", "elevation", "all", or "general_frame".
+    scale : str or DrawingScale, optional
+        Global drawing scale (e.g. "1:50", "1/4\"=1'-0\"").
+    unit : str or DrawingUnit, optional
+        Drawing unit system (e.g. DrawingUnit.MM, DrawingUnit.IN, "mm", "in").
+    plan_scale : str or DrawingScale, optional
+        Scale specifically for framing plan views (default: 1:100 metric or 1/8"=1'-0" imperial).
+    elev_scale : str or DrawingScale, optional
+        Scale specifically for frame elevation views (default: 1:50 metric or 1/4"=1'-0" imperial).
+    detail_scale : str or DrawingScale, optional
+        Scale specifically for member cross-sections & details (default: 1:20 metric or 1"=1'-0" imperial).
 
     Returns
     -------
@@ -109,37 +136,130 @@ def draw_from_core(
     """
     detailing_res = None
     model = None
+    project = None
 
     if isinstance(detailing_or_project, Project):
-        detailing_res = getattr(detailing_or_project, "detailing_result", None)
+        project = detailing_or_project
+        detailing_res = getattr(project, "detailing_result", None)
         if design_result is None:
-            design_result = getattr(detailing_or_project, "design_result", None)
+            design_result = getattr(project, "design_result", None)
         if model_or_project is None:
-            model = getattr(detailing_or_project, "model", None)
+            model = getattr(project, "model", None)
     elif isinstance(detailing_or_project, StructuralModel):
         model = detailing_or_project
     else:
         detailing_res = detailing_or_project
 
-    if model_or_project is not None and model is None:
-        model = model_or_project.model if isinstance(model_or_project, Project) else model_or_project
+    if model_or_project is not None:
+        if isinstance(model_or_project, Project):
+            if project is None:
+                project = model_or_project
+            if model is None:
+                model = model_or_project.model
+        elif model is None:
+            model = model_or_project
+
+    # Resolve unit
+    if unit is not None:
+        d_unit = DrawingUnit.from_str(str(unit))
+    elif project is not None or model is not None:
+        d_unit, _, _ = drawing_unit_from_core(project if project is not None else model)
+    else:
+        is_m = _detect_is_metric(detailing_res, model, project)
+        d_unit = DrawingUnit.MM if is_m else DrawingUnit.IN
+
+    is_metric = d_unit.is_metric
+
+    # Resolve scales
+    if scale is not None:
+        d_scale = DrawingScale.from_str(str(scale), is_metric=is_metric) if isinstance(scale, str) else scale
+        p_scale = DrawingScale.from_str(str(plan_scale), is_metric=is_metric) if isinstance(plan_scale, str) else (plan_scale or d_scale)
+        e_scale = DrawingScale.from_str(str(elev_scale), is_metric=is_metric) if isinstance(elev_scale, str) else (elev_scale or d_scale)
+        det_scale = DrawingScale.from_str(str(detail_scale), is_metric=is_metric) if isinstance(detail_scale, str) else (detail_scale or d_scale)
+    else:
+        if is_metric:
+            p_scale = DrawingScale.from_str(str(plan_scale), is_metric=True) if isinstance(plan_scale, str) else (plan_scale or SCALE_1_100)
+            e_scale = DrawingScale.from_str(str(elev_scale), is_metric=True) if isinstance(elev_scale, str) else (elev_scale or SCALE_1_50)
+            det_scale = DrawingScale.from_str(str(detail_scale), is_metric=True) if isinstance(detail_scale, str) else (detail_scale or SCALE_1_20)
+        else:
+            p_scale = DrawingScale.from_str(str(plan_scale), is_metric=False) if isinstance(plan_scale, str) else (plan_scale or SCALE_1_8_IN)
+            e_scale = DrawingScale.from_str(str(elev_scale), is_metric=False) if isinstance(elev_scale, str) else (elev_scale or SCALE_1_4_IN)
+            det_scale = DrawingScale.from_str(str(detail_scale), is_metric=False) if isinstance(detail_scale, str) else (detail_scale or SCALE_1_IN)
 
     # If general framing requested or no detailing is present but a model exists, generate GA framing drawing
-    if view_type == "general_frame" or (detailing_res is None or not getattr(detailing_res, "element_results", None)):
+    if view_type in ("general_frame", "plan", "elevation") or (detailing_res is None or not getattr(detailing_res, "element_results", None)):
         if model is not None:
-            return draw_general_frame_from_core(model, view_mode="both")
-        doc = _new_doc(is_metric=False)
+            v_mode = "plan" if view_type == "plan" else ("elevation" if view_type == "elevation" else "both")
+            return draw_general_frame_from_core(
+                project or model,
+                view_mode=v_mode,
+                scale=scale,
+                unit=d_unit,
+                plan_scale=p_scale,
+                elev_scale=e_scale,
+            )
+        doc = _new_doc(is_metric=is_metric, unit=d_unit, scale=det_scale)
         return {"drawing": doc, "data": {}, "elements_drawn": 0}
 
-    # Determine metric context from elements or detailing
-    is_metric = _detect_is_metric(detailing_res, model)
-
-    doc = _new_doc(is_metric=is_metric)
+    doc = _new_doc(is_metric=is_metric, unit=d_unit, scale=det_scale)
     msp = doc.modelspace()
 
     member_data_map: Dict[Union[int, str], Any] = {}
     x_offset = 0.0
     elements_drawn = 0
+    y_detailing = 0.0
+
+    if model is not None and view_type in ("auto", "all"):
+        # Composite sheet: place General Arrangement (plan + elevations in each direction) at the top
+        plan_data = create_general_frame_data_from_model(
+            project or model,
+            view_mode="plan",
+            scale=p_scale,
+            unit=d_unit,
+        )
+        elev_data = create_general_frame_data_from_model(
+            project or model,
+            view_mode="elevation",
+            scale=e_scale,
+            unit=d_unit,
+        )
+
+        res_plan = general_frame.plan_view(msp, plan_data, origin=(0.0, 0.0), scale=p_scale, unit=d_unit)
+        plan_bbox = res_plan.get("bounding_box", (0.0, 0.0, 500.0, 500.0))
+        margin = 3500.0 if is_metric else 140.0
+
+        if elev_data.levels:
+            elev_h = max(l.elevation for l in elev_data.levels) - min(l.elevation for l in elev_data.levels)
+        elif elev_data.nodes:
+            elev_h = max(n.y for n in elev_data.nodes) - min(n.y for n in elev_data.nodes)
+        else:
+            elev_h = 10000.0 if is_metric else 360.0
+
+        top_headroom = 1500.0 if is_metric else 60.0
+        elev_y = plan_bbox[1] - margin - elev_h - top_headroom
+        res_elev1 = general_frame.elevation_view(msp, elev_data, origin=(0.0, elev_y), scale=e_scale, unit=d_unit)
+        elev1_bbox = res_elev1.get("bounding_box", (0.0, elev_y, 5000.0, elev_y + elev_h))
+
+        lowest_y = min(plan_bbox[1], elev1_bbox[1])
+
+        # Transverse elevation for 3D models with both X and Y grids
+        if bool(plan_data.grid_x) and bool(plan_data.grid_y) and len(plan_data.grid_x) > 0 and len(plan_data.grid_y) > 0:
+            elev_data_2 = create_general_frame_data_from_model(
+                project or model,
+                view_mode="elevation",
+                view_axis="X",
+                scale=e_scale,
+                unit=d_unit,
+            )
+            elev2_x = elev1_bbox[2] + margin
+            res_elev2 = general_frame.elevation_view(msp, elev_data_2, origin=(elev2_x, elev_y), scale=e_scale, unit=d_unit)
+            elev2_bbox = res_elev2.get("bounding_box", (elev2_x, elev_y, elev2_x + 5000.0, elev_y + elev_h))
+            lowest_y = min(lowest_y, elev2_bbox[1])
+            member_data_map["elevation_transverse"] = elev_data_2
+
+        member_data_map["plan"] = plan_data
+        member_data_map["elevation"] = elev_data
+        y_detailing = lowest_y - margin
 
     elem_results = getattr(detailing_res, "element_results", {})
     des_results = getattr(design_result, "element_results", {}) if design_result else {}
@@ -150,69 +270,87 @@ def draw_from_core(
         member_type = _determine_member_type(elem_detailing, elem_design, model, elem_id)
 
         if member_type == "beam":
-            beam_data = _element_to_beam_data(elem_id, elem_detailing, elem_design, model)
-            beam.section_view(msp, beam_data, origin=(x_offset, 0.0), title=f"SECTION B-{elem_id}")
+            beam_data = _element_to_beam_data(
+                elem_id, elem_detailing, elem_design, model, project=project, scale=det_scale, unit=d_unit
+            )
+            beam.section_view(
+                msp, beam_data, origin=(x_offset, y_detailing), title=f"SECTION B-{elem_id}", scale=det_scale, unit=d_unit
+            )
             member_data_map[elem_id] = beam_data
             step = beam_data.section.width_in + (600.0 if beam_data.is_metric else 30.0)
             x_offset += step
             elements_drawn += 1
 
         elif member_type == "beam_profile":
-            prof_data = _element_to_beam_profile_data(elem_id, elem_detailing, elem_design, model)
-            beam_profile.drawing(msp, prof_data, origin=(x_offset, 0.0))
+            prof_data = _element_to_beam_profile_data(
+                elem_id, elem_detailing, elem_design, model, project=project, scale=det_scale, unit=d_unit
+            )
+            beam_profile.drawing(msp, prof_data, origin=(x_offset, y_detailing), scale=det_scale, unit=d_unit)
             member_data_map[elem_id] = prof_data
             step = sum(prof_data.spans_in) + (1500.0 if prof_data.is_metric else 60.0)
             x_offset += step
             elements_drawn += 1
 
         elif member_type == "column":
-            col_data = _element_to_column_data(elem_id, elem_detailing, elem_design, model)
-            res_col = column.drawing(msp, col_data, origin=(x_offset, 0.0), title=f"COLUMN {elem_id}")
+            col_data = _element_to_column_data(
+                elem_id, elem_detailing, elem_design, model, project=project, scale=det_scale, unit=d_unit
+            )
+            res_col = column.drawing(
+                msp, col_data, origin=(x_offset, y_detailing), title=f"COLUMN {elem_id}", scale=det_scale, unit=d_unit
+            )
             member_data_map[elem_id] = col_data
-            col_bbox = res_col.get("bounding_box", (x_offset, 0.0, x_offset + 100.0, 100.0))
+            col_bbox = res_col.get("bounding_box", (x_offset, y_detailing, x_offset + 100.0, y_detailing + 100.0))
             step = (col_bbox[2] - col_bbox[0]) + (800.0 if col_data.is_metric else 40.0)
             x_offset += step
             elements_drawn += 1
 
         elif member_type == "footing":
-            ftg_data = _element_to_footing_data(elem_id, elem_detailing, elem_design, model)
-            footing.section_view(msp, ftg_data, origin=(x_offset, 0.0))
+            ftg_data = _element_to_footing_data(
+                elem_id, elem_detailing, elem_design, model, project=project, scale=det_scale, unit=d_unit
+            )
+            footing.section_view(msp, ftg_data, origin=(x_offset, y_detailing), scale=det_scale, unit=d_unit)
             f_margin = 800.0 if ftg_data.is_metric else 35.0
-            y_plan = -(ftg_data.footing_depth_in + ftg_data.plinth_height_in + ftg_data.width_in / 2.0 + f_margin)
-            footing.plan_view(msp, ftg_data, origin=(x_offset, y_plan))
+            y_plan = y_detailing - (ftg_data.footing_depth_in + ftg_data.plinth_height_in + ftg_data.width_in / 2.0 + f_margin)
+            footing.plan_view(msp, ftg_data, origin=(x_offset, y_plan), scale=det_scale, unit=d_unit)
             member_data_map[elem_id] = ftg_data
             step = ftg_data.length_in + (1000.0 if ftg_data.is_metric else 40.0)
             x_offset += step
             elements_drawn += 1
 
         elif member_type == "combined_footing":
-            cf_data = _element_to_combined_footing_data(elem_id, elem_detailing, elem_design, model)
-            combined_footing.section_view(msp, cf_data, origin=(x_offset, 0.0))
+            cf_data = _element_to_combined_footing_data(
+                elem_id, elem_detailing, elem_design, model, project=project, scale=det_scale, unit=d_unit
+            )
+            combined_footing.section_view(msp, cf_data, origin=(x_offset, y_detailing), scale=det_scale, unit=d_unit)
             cf_margin = 800.0 if cf_data.is_metric else 35.0
-            y_plan = -(cf_data.footing_depth_in + cf_data.plinth_height_in + cf_data.width_in / 2.0 + cf_margin)
-            combined_footing.plan_view(msp, cf_data, origin=(x_offset, y_plan))
+            y_plan = y_detailing - (cf_data.footing_depth_in + cf_data.plinth_height_in + cf_data.width_in / 2.0 + cf_margin)
+            combined_footing.plan_view(msp, cf_data, origin=(x_offset, y_plan), scale=det_scale, unit=d_unit)
             member_data_map[elem_id] = cf_data
             step = cf_data.total_length_in + (1000.0 if cf_data.is_metric else 40.0)
             x_offset += step
             elements_drawn += 1
 
         elif member_type == "staircase":
-            st_data = _element_to_staircase_data(elem_id, elem_detailing, elem_design, model)
-            staircase.section_view(msp, st_data, origin=(x_offset, 0.0))
+            st_data = _element_to_staircase_data(
+                elem_id, elem_detailing, elem_design, model, project=project, scale=det_scale, unit=d_unit
+            )
+            staircase.section_view(msp, st_data, origin=(x_offset, y_detailing), scale=det_scale, unit=d_unit)
             st_margin = 1500.0 if st_data.is_metric else 60.0
-            y_plan = -(st_data.flight_width_in * 2.5 + st_margin)
-            staircase.plan_view(msp, st_data, origin=(x_offset, y_plan))
+            y_plan = y_detailing - (st_data.flight_width_in * 2.5 + st_margin)
+            staircase.plan_view(msp, st_data, origin=(x_offset, y_plan), scale=det_scale, unit=d_unit)
             member_data_map[elem_id] = st_data
             step = st_data.flight_length_in + st_data.bottom_landing_depth_in + st_data.top_landing_depth_in + (1200.0 if st_data.is_metric else 50.0)
             x_offset += step
             elements_drawn += 1
 
         elif member_type == "slab":
-            slab_data = _element_to_slab_data(elem_id, elem_detailing, elem_design, model)
-            slab.plan_view(msp, slab_data, origin=(x_offset, 0.0))
+            slab_data = _element_to_slab_data(
+                elem_id, elem_detailing, elem_design, model, project=project, scale=det_scale, unit=d_unit
+            )
+            slab.plan_view(msp, slab_data, origin=(x_offset, y_detailing), scale=det_scale, unit=d_unit)
             sl_margin = 1000.0 if slab_data.is_metric else 50.0
-            y_sec = -(slab_data.width_in + sl_margin)
-            slab.section_view(msp, slab_data, origin=(x_offset, y_sec))
+            y_sec = y_detailing - (slab_data.width_in + sl_margin)
+            slab.section_view(msp, slab_data, origin=(x_offset, y_sec), scale=det_scale, unit=d_unit)
             member_data_map[elem_id] = slab_data
             step = slab_data.length_in + (1200.0 if slab_data.is_metric else 50.0)
             x_offset += step
@@ -226,40 +364,250 @@ def draw_from_core(
 
 
 def draw_general_frame_from_core(
-    model_or_project: Union[StructuralModel, Project],
+    model_or_project: Union[StructuralModel, Project, Any],
     *,
     view_mode: str = "both",  # "elevation", "plan", "both"
+    story_level: Optional[Union[str, int, float]] = None,
+    grid_line: Optional[Union[str, float]] = None,
+    view_axis: Optional[str] = None,
     title: Optional[str] = None,
+    scale: Optional[Union[str, DrawingScale]] = None,
+    unit: Optional[Union[str, DrawingUnit]] = None,
+    plan_scale: Optional[Union[str, DrawingScale]] = None,
+    elev_scale: Optional[Union[str, DrawingScale]] = None,
+    output_path: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
     """
     Generate General Arrangement / Framing Drawings (plan and/or elevation outlines of beams, columns, trusses)
     directly from a structural model without rebar details.
     """
-    model = model_or_project.model if isinstance(model_or_project, Project) else model_or_project
-    frame_data = _model_to_general_frame_data(model, view_mode=view_mode, title=title)
+    project = model_or_project if isinstance(model_or_project, Project) else None
+    model = getattr(model_or_project, "model", model_or_project)
 
-    doc = _new_doc(is_metric=frame_data.is_metric)
-    msp = doc.modelspace()
+    if unit is not None:
+        d_unit = DrawingUnit.from_str(str(unit))
+    elif project is not None or model is not None:
+        d_unit, _, _ = drawing_unit_from_core(project if project is not None else model)
+    else:
+        d_unit = DrawingUnit.MM
 
-    res = general_frame.drawing(msp, frame_data, origin=(0.0, 0.0))
+    is_metric = d_unit.is_metric
 
-    return {
-        "drawing": doc,
-        "data": {"frame": frame_data},
-        "elements_drawn": len(frame_data.members),
-        "views": res,
-    }
+    if scale is not None:
+        d_scale = DrawingScale.from_str(str(scale), is_metric=is_metric) if isinstance(scale, str) else scale
+        p_scale = DrawingScale.from_str(str(plan_scale), is_metric=is_metric) if isinstance(plan_scale, str) else (plan_scale or d_scale)
+        e_scale = DrawingScale.from_str(str(elev_scale), is_metric=is_metric) if isinstance(elev_scale, str) else (elev_scale or d_scale)
+    else:
+        if is_metric:
+            p_scale = DrawingScale.from_str(str(plan_scale), is_metric=True) if isinstance(plan_scale, str) else (plan_scale or SCALE_1_100)
+            e_scale = DrawingScale.from_str(str(elev_scale), is_metric=True) if isinstance(elev_scale, str) else (elev_scale or SCALE_1_50)
+        else:
+            p_scale = DrawingScale.from_str(str(plan_scale), is_metric=False) if isinstance(plan_scale, str) else (plan_scale or SCALE_1_8_IN)
+            e_scale = DrawingScale.from_str(str(elev_scale), is_metric=False) if isinstance(elev_scale, str) else (elev_scale or SCALE_1_4_IN)
+
+    if view_mode == "both":
+        plan_data = create_general_frame_data_from_model(
+            model_or_project,
+            view_mode="plan",
+            story_level=story_level,
+            title=title,
+            scale=p_scale,
+            unit=d_unit,
+        )
+        elev_data = create_general_frame_data_from_model(
+            model_or_project,
+            view_mode="elevation",
+            grid_line=grid_line,
+            view_axis=view_axis,
+            title=title,
+            scale=e_scale,
+            unit=d_unit,
+        )
+
+        doc = _new_doc(is_metric=is_metric, unit=d_unit, scale=p_scale)
+        msp = doc.modelspace()
+
+        res_plan = general_frame.plan_view(msp, plan_data, origin=(0.0, 0.0), scale=p_scale, unit=d_unit)
+        plan_bbox = res_plan.get("bounding_box", (0.0, 0.0, 500.0, 500.0))
+        margin = 3500.0 if is_metric else 140.0
+
+        if elev_data.levels:
+            elev_h = max(l.elevation for l in elev_data.levels) - min(l.elevation for l in elev_data.levels)
+        elif elev_data.nodes:
+            elev_h = max(n.y for n in elev_data.nodes) - min(n.y for n in elev_data.nodes)
+        else:
+            elev_h = 10000.0 if is_metric else 360.0
+
+        top_headroom = 1500.0 if is_metric else 60.0
+        elev_y = plan_bbox[1] - margin - elev_h - top_headroom
+        res_elev = general_frame.elevation_view(msp, elev_data, origin=(0.0, elev_y), scale=e_scale, unit=d_unit)
+        elev_bbox = res_elev.get("bounding_box", (0.0, elev_y, 5000.0, elev_y + elev_h))
+
+        # Check if 3D model with grids in both orthogonal directions (and grid_line was not explicitly specified)
+        res_elev2 = None
+        elev_data_2 = None
+        has_transverse = (
+            grid_line is None
+            and bool(plan_data.grid_x)
+            and bool(plan_data.grid_y)
+            and len(plan_data.grid_x) > 0
+            and len(plan_data.grid_y) > 0
+        )
+        if has_transverse:
+            elev_data_2 = create_general_frame_data_from_model(
+                model_or_project,
+                view_mode="elevation",
+                view_axis="X",
+                title=title,
+                scale=e_scale,
+                unit=d_unit,
+            )
+            elev2_x = elev_bbox[2] + margin
+            res_elev2 = general_frame.elevation_view(msp, elev_data_2, origin=(elev2_x, elev_y), scale=e_scale, unit=d_unit)
+
+        if output_path is not None:
+            out_p = Path(output_path)
+            out_p.parent.mkdir(parents=True, exist_ok=True)
+            doc.saveas(str(out_p))
+
+        raw_elems = getattr(model, "elements", None) or getattr(model, "members", None) or ()
+        n_elems = len(raw_elems) if raw_elems else len(elev_data.members)
+
+        ret_data = {"plan": plan_data, "elevation": elev_data, "frame": elev_data}
+        ret_views = {"plan": res_plan, "elevation": res_elev}
+        if elev_data_2 is not None and res_elev2 is not None:
+            ret_data["elevation_transverse"] = elev_data_2
+            ret_data["elevation_y"] = elev_data_2
+            ret_views["elevation_transverse"] = res_elev2
+            ret_views["elevation_x"] = res_elev
+            ret_views["elevation_y"] = res_elev2
+
+        return {
+            "drawing": doc,
+            "data": ret_data,
+            "elements_drawn": n_elems,
+            "views": ret_views,
+        }
+
+    elif view_mode == "plan":
+        frame_data = create_general_frame_data_from_model(
+            model_or_project,
+            view_mode="plan",
+            story_level=story_level,
+            title=title,
+            scale=p_scale,
+            unit=d_unit,
+        )
+        doc = _new_doc(is_metric=is_metric, unit=d_unit, scale=p_scale)
+        msp = doc.modelspace()
+        res = general_frame.plan_view(msp, frame_data, origin=(0.0, 0.0), scale=p_scale, unit=d_unit)
+
+        if output_path is not None:
+            out_p = Path(output_path)
+            out_p.parent.mkdir(parents=True, exist_ok=True)
+            doc.saveas(str(out_p))
+
+        raw_elems = getattr(model, "elements", None) or getattr(model, "members", None) or ()
+        n_elems = len(raw_elems) if raw_elems else len(frame_data.members)
+
+        return {
+            "drawing": doc,
+            "data": {"plan": frame_data, "frame": frame_data},
+            "elements_drawn": n_elems,
+            "views": {"plan": res},
+        }
+
+    else:
+        # Elevation
+        frame_data = create_general_frame_data_from_model(
+            model_or_project,
+            view_mode="elevation",
+            grid_line=grid_line,
+            view_axis=view_axis,
+            title=title,
+            scale=e_scale,
+            unit=d_unit,
+        )
+        doc = _new_doc(is_metric=is_metric, unit=d_unit, scale=e_scale)
+        msp = doc.modelspace()
+        res = general_frame.elevation_view(msp, frame_data, origin=(0.0, 0.0), scale=e_scale, unit=d_unit)
+
+        if output_path is not None:
+            out_p = Path(output_path)
+            out_p.parent.mkdir(parents=True, exist_ok=True)
+            doc.saveas(str(out_p))
+
+        raw_elems = getattr(model, "elements", None) or getattr(model, "members", None) or ()
+        n_elems = len(raw_elems) if raw_elems else len(frame_data.members)
+
+        return {
+            "drawing": doc,
+            "data": {"elevation": frame_data, "frame": frame_data},
+            "elements_drawn": n_elems,
+            "views": {"elevation": res},
+        }
 
 
-def _new_doc(is_metric: bool = False) -> Any:
+
+def draw_framing_plan_from_core(
+    model_or_project: Union[StructuralModel, Project, Any],
+    *,
+    story_level: Optional[Union[str, int, float]] = None,
+    title: Optional[str] = None,
+    scale: Optional[Union[str, DrawingScale]] = None,
+    unit: Optional[Union[str, DrawingUnit]] = None,
+    output_path: Optional[Union[str, Path]] = None,
+) -> Dict[str, Any]:
+    """Generate a floor or roof framing plan view from a structural model."""
+    return draw_general_frame_from_core(
+        model_or_project,
+        view_mode="plan",
+        story_level=story_level,
+        title=title,
+        scale=scale,
+        unit=unit,
+        output_path=output_path,
+    )
+
+
+def draw_frame_elevation_from_core(
+    model_or_project: Union[StructuralModel, Project, Any],
+    *,
+    grid_line: Optional[Union[str, float]] = None,
+    view_axis: Optional[str] = None,
+    title: Optional[str] = None,
+    scale: Optional[Union[str, DrawingScale]] = None,
+    unit: Optional[Union[str, DrawingUnit]] = None,
+    output_path: Optional[Union[str, Path]] = None,
+) -> Dict[str, Any]:
+    """Generate a 2D frame elevation along a grid line from a structural model."""
+    return draw_general_frame_from_core(
+        model_or_project,
+        view_mode="elevation",
+        grid_line=grid_line,
+        view_axis=view_axis,
+        title=title,
+        scale=scale,
+        unit=unit,
+        output_path=output_path,
+    )
+
+
+def _new_doc(
+    is_metric: bool = False,
+    unit: Optional[Union[str, DrawingUnit]] = None,
+    scale: Optional[Union[str, DrawingScale]] = None,
+) -> Any:
     """Create a fully-styled DXF document matching struct_draw.backends."""
+    d_unit = DrawingUnit.from_str(str(unit)) if unit is not None else (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+    d_scale = DrawingScale.from_str(str(scale), is_metric=d_unit.is_metric) if isinstance(scale, str) else scale
     doc = new_drawing()
     register_all_styles(
         doc,
         layers=default_layers(),
         linetypes=default_linetypes(),
         text_styles=default_text_styles(),
-        dimension_styles=default_dimension_styles(is_metric=is_metric),
+        dimension_styles=default_dimension_styles(is_metric=d_unit.is_metric, scale=d_scale, unit=d_unit),
         blocks=default_blocks(),
     )
     return doc
@@ -330,6 +678,7 @@ def _extract_section_properties(
     elem_design: Optional[Any],
     model: Optional[Any],
     *,
+    project: Optional[Any] = None,
     default_w: float = 12.0,
     default_d: float = 18.0,
     default_cover: float = 1.5,
@@ -443,18 +792,41 @@ def _extract_section_properties(
                 if cover is None:
                     cover = _safe_get(s_entry, ("cover_in", "cover", "clear_cover"))
 
-    # Determine metric
+    # Determine metric context
+    has_explicit_metric = None
+    if project is not None and getattr(project, "metadata", None) is not None:
+        meta_units = getattr(project.metadata, "units", None)
+        if meta_units is not None:
+            u_sys = str(getattr(meta_units, "system", "")).lower()
+            u_len = str(getattr(meta_units, "length", "")).lower()
+            if u_sys in ("metric", "si") or u_len in ("m", "meter", "meters", "mm", "cm"):
+                has_explicit_metric = True
+            elif u_sys in ("imperial", "us_customary") or u_len in ("in", "inch", "ft", "foot", "feet"):
+                has_explicit_metric = False
+    if has_explicit_metric is None and model is not None:
+        if hasattr(model, "is_metric"):
+            has_explicit_metric = bool(model.is_metric)
+        elif hasattr(model, "unit_system"):
+            has_explicit_metric = "si" in str(model.unit_system).lower() or "metric" in str(model.unit_system).lower()
+
     test_w = float(w) if w is not None else default_w
     test_d = float(d) if d is not None else default_d
     test_len = float(length) if length is not None else default_length
 
-    is_metric = test_w >= 100.0 or test_d >= 100.0 or test_len >= 1000.0
+    if has_explicit_metric is not None:
+        is_metric = has_explicit_metric
+    else:
+        is_metric = test_w >= 100.0 or test_d >= 100.0 or test_len >= 1000.0
 
     if is_metric:
-        final_w = float(w) if w is not None else (default_w * 25.4 if default_w < 50 else default_w)
-        final_d = float(d) if d is not None else (default_d * 25.4 if default_d < 50 else default_d)
-        final_cover = float(cover) if cover is not None else (default_cover * 25.4 if default_cover < 10 else 40.0)
-        final_len = float(length) if length is not None else (default_length * 25.4 if default_length < 200 else default_length)
+        raw_w = float(w) if w is not None else (default_w * 25.4 if default_w < 50 else default_w)
+        final_w = raw_w * 1000.0 if raw_w <= 2.5 else raw_w
+        raw_d = float(d) if d is not None else (default_d * 25.4 if default_d < 50 else default_d)
+        final_d = raw_d * 1000.0 if raw_d <= 2.5 else raw_d
+        raw_cover = float(cover) if cover is not None else (default_cover * 25.4 if default_cover < 10 else 40.0)
+        final_cover = raw_cover * 1000.0 if raw_cover <= 0.2 else raw_cover
+        raw_len = float(length) if length is not None else (default_length * 25.4 if default_length < 200 else default_length)
+        final_len = raw_len * 1000.0 if raw_len <= 150.0 else raw_len
     else:
         final_w = float(w) if w is not None else default_w
         final_d = float(d) if d is not None else default_d
@@ -464,8 +836,17 @@ def _extract_section_properties(
     return final_w, final_d, final_cover, final_len, is_metric
 
 
-def _detect_is_metric(detailing_res: Any, model: Any) -> bool:
+def _detect_is_metric(detailing_res: Any, model: Any, project: Optional[Any] = None) -> bool:
     """Check if the global project/results use metric (SI mm) units."""
+    if project is not None and getattr(project, "metadata", None) is not None:
+        meta_units = getattr(project.metadata, "units", None)
+        if meta_units is not None:
+            u_sys = str(getattr(meta_units, "system", "")).lower()
+            u_len = str(getattr(meta_units, "length", "")).lower()
+            if u_sys in ("metric", "si") or u_len in ("m", "meter", "meters", "mm", "cm"):
+                return True
+            if u_sys in ("imperial", "us_customary") or u_len in ("in", "inch", "ft", "foot", "feet"):
+                return False
     if hasattr(detailing_res, "is_metric"):
         return bool(detailing_res.is_metric)
     if hasattr(model, "is_metric"):
@@ -476,7 +857,7 @@ def _detect_is_metric(detailing_res: Any, model: Any) -> bool:
     # Check first element result
     if detailing_res and hasattr(detailing_res, "element_results") and detailing_res.element_results:
         first_elem = next(iter(detailing_res.element_results.values()))
-        w, d, _, _, is_m = _extract_section_properties(0, first_elem, None, model)
+        w, d, _, _, is_m = _extract_section_properties(0, first_elem, None, model, project=project)
         return is_m
     return False
 
@@ -491,10 +872,14 @@ def _element_to_beam_data(
     elem_detailing: Any,
     elem_design: Optional[Any],
     model: Optional[Any],
+    *,
+    project: Optional[Any] = None,
+    scale: Any = None,
+    unit: Any = None,
 ) -> BeamData:
     """Convert struct_core detailing/design/model -> struct_draw BeamData."""
     w, d, cover, length, is_metric = _extract_section_properties(
-        elem_id, elem_detailing, elem_design, model, default_w=12.0, default_d=18.0, default_cover=1.5
+        elem_id, elem_detailing, elem_design, model, project=project, default_w=12.0, default_d=18.0, default_cover=1.5
     )
 
     bar_layout = getattr(elem_detailing, "bar_layout", None)
@@ -580,6 +965,8 @@ def _element_to_beam_data(
         bottom_bars=tuple(bottom_rebars),
         stirrups=stirrup_obj,
         schedule=tuple(sched_rows),
+        scale=scale,
+        unit=unit,
     )
 
 
@@ -588,10 +975,14 @@ def _element_to_beam_profile_data(
     elem_detailing: Any,
     elem_design: Optional[Any],
     model: Optional[Any],
+    *,
+    project: Optional[Any] = None,
+    scale: Any = None,
+    unit: Any = None,
 ) -> BeamProfileData:
     """Convert struct_core detailing/design -> struct_draw BeamProfileData."""
     w, d, cover, length, is_metric = _extract_section_properties(
-        elem_id, elem_detailing, elem_design, model, default_w=12.0, default_d=24.0, default_cover=1.5
+        elem_id, elem_detailing, elem_design, model, project=project, default_w=12.0, default_d=24.0, default_cover=1.5
     )
 
     # Spans
@@ -624,6 +1015,8 @@ def _element_to_beam_profile_data(
         stirrup=Stirrup(size=stirrup_sz, spacing_in=s_mid),
         support_stirrup_spacing_in=s_supp,
         mid_stirrup_spacing_in=s_mid,
+        scale=scale,
+        unit=unit,
     )
 
 
@@ -632,6 +1025,10 @@ def _element_to_footing_data(
     elem_detailing: Any,
     elem_design: Optional[Any],
     model: Optional[Any],
+    *,
+    project: Optional[Any] = None,
+    scale: Any = None,
+    unit: Any = None,
 ) -> FootingData:
     """Convert struct_core detailing/design -> struct_draw FootingData."""
     length = _safe_get(elem_detailing, ("length_in", "length", "footing_length", "L")) or _safe_get(elem_design, ("length_in", "length", "L"))
@@ -641,7 +1038,9 @@ def _element_to_footing_data(
     col_d = _safe_get(elem_detailing, ("col_depth_in", "col_depth", "column_depth")) or (400.0 if (length and length >= 1000) else 16.0)
 
     is_metric = False
-    if (length and length >= 1000) or (width and width >= 1000) or (thickness and thickness >= 100):
+    if unit is not None:
+        is_metric = getattr(unit, "is_metric", False)
+    elif (length and length >= 1000) or (width and width >= 1000) or (thickness and thickness >= 100):
         is_metric = True
 
     flen = float(length) if length else (2000.0 if is_metric else 84.0)
@@ -666,6 +1065,8 @@ def _element_to_footing_data(
         cover_in=cover,
         bar_dia_in=bar_dia,
         bar_spacing_in=bar_sp,
+        scale=scale,
+        unit=unit,
     )
 
 
@@ -674,6 +1075,10 @@ def _element_to_combined_footing_data(
     elem_detailing: Any,
     elem_design: Optional[Any],
     model: Optional[Any],
+    *,
+    project: Optional[Any] = None,
+    scale: Any = None,
+    unit: Any = None,
 ) -> CombinedFootingData:
     """Convert struct_core detailing/design -> struct_draw CombinedFootingData."""
     proj_l = float(_safe_get(elem_detailing, ("proj_left_in", "cantilever_left")) or _safe_get(elem_design, ("proj_left_in", "cantilever_left")) or 30.0)
@@ -682,7 +1087,11 @@ def _element_to_combined_footing_data(
     w = float(_safe_get(elem_detailing, ("width_in", "width")) or _safe_get(elem_design, ("width_in", "width")) or 60.0)
     thk = float(_safe_get(elem_detailing, ("thickness_in", "thickness")) or _safe_get(elem_design, ("thickness_in", "thickness")) or 24.0)
 
-    is_metric = proj_l >= 500.0 or col_sp >= 1000.0
+    is_metric = False
+    if unit is not None:
+        is_metric = getattr(unit, "is_metric", False)
+    elif proj_l >= 500.0 or col_sp >= 1000.0:
+        is_metric = True
 
     return CombinedFootingData(
         name=f"CF{elem_id}",
@@ -695,6 +1104,8 @@ def _element_to_combined_footing_data(
         col1_depth_in=16.0 if not is_metric else 400.0,
         col2_width_in=16.0 if not is_metric else 400.0,
         col2_depth_in=16.0 if not is_metric else 400.0,
+        scale=scale,
+        unit=unit,
     )
 
 
@@ -703,10 +1114,14 @@ def _element_to_column_data(
     elem_detailing: Any,
     elem_design: Optional[Any],
     model: Optional[Any],
+    *,
+    project: Optional[Any] = None,
+    scale: Any = None,
+    unit: Any = None,
 ) -> ColumnData:
     """Convert struct_core detailing/design/model -> struct_draw ColumnData."""
     w, d, cover, length, is_metric = _extract_section_properties(
-        elem_id, elem_detailing, elem_design, model, default_w=16.0, default_d=16.0, default_cover=1.5, default_length=144.0
+        elem_id, elem_detailing, elem_design, model, project=project, default_w=16.0, default_d=16.0, default_cover=1.5, default_length=144.0
     )
 
     bar_layout = getattr(elem_detailing, "bar_layout", None)
@@ -750,6 +1165,8 @@ def _element_to_column_data(
         section=GeometrySection(width_in=w, depth_in=d, cover_in=cover),
         longitudinal_bars=tuple(bars_list),
         stirrups=tie_obj,
+        scale=scale,
+        unit=unit,
     )
 
 
@@ -758,6 +1175,10 @@ def _element_to_staircase_data(
     elem_detailing: Any,
     elem_design: Optional[Any],
     model: Optional[Any],
+    *,
+    project: Optional[Any] = None,
+    scale: Any = None,
+    unit: Any = None,
 ) -> StaircaseData:
     """Convert struct_core detailing/design -> struct_draw StaircaseData."""
     f_w = float(_safe_get(elem_detailing, ("flight_width_in", "flight_width", "width")) or _safe_get(elem_design, ("flight_width_in", "flight_width", "width")) or 48.0)
@@ -766,7 +1187,11 @@ def _element_to_staircase_data(
     n_risers = int(_safe_get(elem_detailing, ("num_risers", "steps")) or _safe_get(elem_design, ("num_risers", "steps")) or 10)
     slab_thk = float(_safe_get(elem_detailing, ("slab_thickness_in", "waist_thickness", "thickness")) or _safe_get(elem_design, ("slab_thickness_in", "waist_thickness", "thickness")) or 6.0)
 
-    is_metric = f_w >= 500.0 or riser >= 50.0
+    is_metric = False
+    if unit is not None:
+        is_metric = getattr(unit, "is_metric", False)
+    elif f_w >= 500.0 or riser >= 50.0:
+        is_metric = True
 
     return StaircaseData(
         name=f"ST{elem_id}",
@@ -775,6 +1200,8 @@ def _element_to_staircase_data(
         tread_depth_in=tread if not is_metric else (tread if tread >= 100 else 250.0),
         num_risers=n_risers,
         slab_thickness_in=slab_thk if not is_metric else (slab_thk if slab_thk >= 50 else 150.0),
+        scale=scale,
+        unit=unit,
     )
 
 
@@ -783,6 +1210,10 @@ def _element_to_slab_data(
     elem_detailing: Any,
     elem_design: Optional[Any],
     model: Optional[Any],
+    *,
+    project: Optional[Any] = None,
+    scale: Any = None,
+    unit: Any = None,
 ) -> SlabData:
     """Convert struct_core detailing/design -> struct_draw SlabData."""
     length = float(_safe_get(elem_detailing, ("length_in", "length", "lx")) or _safe_get(elem_design, ("length_in", "length", "lx")) or 240.0)
@@ -790,7 +1221,11 @@ def _element_to_slab_data(
     thk = float(_safe_get(elem_detailing, ("thickness_in", "thickness", "h")) or _safe_get(elem_design, ("thickness_in", "thickness", "h")) or 6.0)
     cover = float(_safe_get(elem_detailing, ("cover_in", "cover")) or _safe_get(elem_design, ("cover_in", "cover")) or 0.75)
 
-    is_metric = length >= 1000.0 or width >= 1000.0 or thk >= 50.0
+    is_metric = False
+    if unit is not None:
+        is_metric = getattr(unit, "is_metric", False)
+    elif length >= 1000.0 or width >= 1000.0 or thk >= 50.0:
+        is_metric = True
 
     t_bar = Rebar(mark="T1", size="T10" if is_metric else "#4", quantity=10)
     b_bar = Rebar(mark="B1", size="T12" if is_metric else "#5", quantity=12)
@@ -803,6 +1238,8 @@ def _element_to_slab_data(
         cover_in=cover if not is_metric else (cover if cover >= 10 else 20.0),
         top_bar=t_bar,
         bottom_bar=b_bar,
+        scale=scale,
+        unit=unit,
     )
 
 
@@ -811,88 +1248,127 @@ def _element_to_slab_data(
 # ---------------------------------------------------------------------------
 
 
-def _model_to_general_frame_data(
+def _cluster_coords(coords: Sequence[float], tol: float = 50.0) -> List[float]:
+    """Cluster 1D coordinates within tolerance and return sorted unique coordinates."""
+    if not coords:
+        return [0.0]
+    sorted_c = sorted(coords)
+    clusters: List[float] = [sorted_c[0]]
+    for c in sorted_c[1:]:
+        if abs(c - clusters[-1]) > tol:
+            clusters.append(c)
+    return clusters
+
+
+def _detect_model_units_and_scale(
     model: Any,
+    project: Optional[Any],
+    nodes: Sequence[Any],
+    sections: Sequence[Any],
+) -> Tuple[bool, float, float]:
+    """
+    Determine whether model is metric (SI) or imperial, and calculate coordinate
+    and section scale factors so struct_draw receives millimeter or inch values.
+    """
+    # 1. Check explicit project metadata units or model units
+    target = project if project is not None else model
+    if target is not None:
+        meta = getattr(target, "metadata", None)
+        if (meta and getattr(meta, "units", None) is not None) or getattr(target, "units", None) is not None:
+            u, c_scale, s_scale = drawing_unit_from_core(target)
+            return u.is_metric, c_scale, s_scale
+
+    if project is not None and getattr(project, "metadata", None) is not None:
+        meta_units = getattr(project.metadata, "units", None)
+        if meta_units is not None:
+            u_sys = str(getattr(meta_units, "system", "")).lower()
+            u_len = str(getattr(meta_units, "length", "")).lower()
+            if u_sys in ("imperial", "us_customary") or u_len in ("in", "inch", "ft", "foot", "feet"):
+                c_scale = 12.0 if u_len in ("ft", "foot", "feet") else 1.0
+                return False, c_scale, 1.0
+            elif u_sys in ("metric", "si") or u_len in ("m", "meter", "meters", "mm"):
+                c_scale = 1.0 if u_len == "mm" else 1000.0
+                s_scale = 1.0 if u_len == "mm" else 1000.0
+                return True, c_scale, s_scale
+
+    # 2. Heuristic detection from coordinates and section dimensions
+    max_coord = max((abs(float(getattr(n, a, 0.0))) for n in nodes for a in ("x", "y", "z")), default=0.0)
+
+    sec_dims: List[float] = []
+    for s in sections:
+        for attr in ("b", "h", "d", "width", "depth"):
+            v = getattr(s, attr, None)
+            if v is not None and float(v) > 0:
+                sec_dims.append(float(v))
+    max_sec = max(sec_dims, default=0.4)
+
+    # Standard metric model in meters: section <= 2.5m (or <= 5m with building coord <= 200m)
+    if max_sec <= 2.5 or (max_sec <= 5.0 and max_coord <= 200.0):
+        return True, 1000.0, 1000.0
+    # Model already in millimeters
+    if max_sec >= 100.0 or max_coord >= 1000.0:
+        return True, 1.0, 1.0
+    # Model in US Customary
+    if 2.5 < max_sec < 100.0:
+        c_scale = 12.0 if max_coord <= 250.0 else 1.0
+        return False, c_scale, 1.0
+
+    return True, 1000.0, 1000.0
+
+
+def create_general_frame_data_from_model(
+    model_or_project: Union[StructuralModel, Project, Any],
     *,
-    view_mode: str = "both",
+    view_mode: str = "both",  # "both", "plan", "elevation"
+    story_level: Optional[Union[str, int, float]] = None,
+    grid_line: Optional[Union[str, float]] = None,
+    view_axis: Optional[str] = None,  # "X" or "Y" (for 3D frame elevation)
     title: Optional[str] = None,
+    scale: Optional[Union[str, DrawingScale]] = None,
+    unit: Optional[Union[str, DrawingUnit]] = None,
 ) -> GeneralFrameData:
-    """Convert a structural model's nodes, elements, grids, and levels into GeneralFrameData."""
-    nodes_list: List[FrameNode] = []
-    members_list: List[FrameMember] = []
-    grid_x_list: List[FrameGridLine] = []
-    grid_y_list: List[FrameGridLine] = []
-    levels_list: List[FrameLevelLine] = []
+    """
+    Convert a structural model (nodes, elements, sections, story elevations) into
+    a comprehensive GeneralFrameData representation tailored for framing plans or elevations.
 
-    is_metric = False
+    Features:
+    * Automatic unit detection & scaling (meters to mm for standard SI models).
+    * Automatic 2D vs 3D frame geometry detection.
+    * Automated grid clustering (A, B, C... and 1, 2, 3...).
+    * Automated story elevation levels (GL, FL1, FL2... ROOF).
+    * Automated member classification (columns, beams, braces/trusses).
+    * Cross-section lookup from RectangularSection, CircularSection, or GeneralSection.
+    * Level filtering for Framing Plans (e.g. story_level='FL1' or 'ROOF').
+    * Grid-plane filtering for Frame Elevations (e.g. grid_line='1' or 'A').
+    """
+    project = model_or_project if isinstance(model_or_project, Project) else None
+    model = getattr(model_or_project, "model", model_or_project)
 
-    # Extract nodes
-    nodes = getattr(model, "nodes", None)
-    if isinstance(nodes, dict):
-        for n_id, n_obj in nodes.items():
-            nx = float(getattr(n_obj, "x", 0.0))
-            ny = float(getattr(n_obj, "y", 0.0))
-            nz = float(getattr(n_obj, "z", 0.0))
-            if nx >= 1000.0 or ny >= 1000.0 or nz >= 1000.0:
-                is_metric = True
-            # For 2D elevation, Y coordinate is typically elevation (or Z in 3D)
-            elev = nz if nz != 0.0 else ny
-            nodes_list.append(FrameNode(id=n_id, x=nx, y=elev, z=nz))
-    elif isinstance(nodes, (list, tuple)):
-        for idx, n_obj in enumerate(nodes):
-            n_id = getattr(n_obj, "id", idx + 1)
-            nx = float(getattr(n_obj, "x", 0.0))
-            ny = float(getattr(n_obj, "y", 0.0))
-            nz = float(getattr(n_obj, "z", 0.0))
-            if nx >= 1000.0 or ny >= 1000.0 or nz >= 1000.0:
-                is_metric = True
-            elev = nz if nz != 0.0 else ny
-            nodes_list.append(FrameNode(id=n_id, x=nx, y=elev, z=nz))
+    # 1. Extract raw nodes
+    raw_nodes = getattr(model, "nodes", None) or []
+    if isinstance(raw_nodes, dict):
+        raw_nodes_list = list(raw_nodes.values())
+    else:
+        raw_nodes_list = list(raw_nodes)
 
-    # Extract members
-    elements = getattr(model, "elements", None) or getattr(model, "members", None)
-    if isinstance(elements, dict):
-        for e_id, e_obj in elements.items():
-            members_list.append(_create_frame_member(e_id, e_obj, model, is_metric))
-    elif isinstance(elements, (list, tuple)):
-        for idx, e_obj in enumerate(elements):
-            e_id = getattr(e_obj, "id", f"M{idx+1}")
-            members_list.append(_create_frame_member(e_id, e_obj, model, is_metric))
+    # Extract raw sections
+    raw_sections = getattr(model, "sections", None) or []
+    if isinstance(raw_sections, dict):
+        raw_sections_list = list(raw_sections.values())
+    else:
+        raw_sections_list = list(raw_sections)
 
-    # Extract grid lines
-    grids = getattr(model, "grids", None) or getattr(model, "grid_lines", None)
-    if isinstance(grids, dict):
-        for g_lbl, g_val in grids.items():
-            axis = "X" if str(g_lbl).isalpha() else "Y"
-            grid_x_list.append(FrameGridLine(label=str(g_lbl), coord=float(g_val), axis=axis))
-    elif isinstance(grids, (list, tuple)):
-        for g_obj in grids:
-            grid_x_list.append(
-                FrameGridLine(
-                    label=str(getattr(g_obj, "label", "A")),
-                    coord=float(getattr(g_obj, "coord", 0.0)),
-                    axis=getattr(g_obj, "axis", "X"),
-                )
-            )
+    # 2. Units & Scaling
+    is_metric, coord_scale, sec_scale = _detect_model_units_and_scale(model, project, raw_nodes_list, raw_sections_list)
+    if unit is not None:
+        d_unit = DrawingUnit.from_str(str(unit))
+        is_metric = d_unit.is_metric
+    else:
+        d_unit = DrawingUnit.MM if is_metric else DrawingUnit.IN
 
-    # Extract levels
-    levels = getattr(model, "levels", None) or getattr(model, "stories", None)
-    if isinstance(levels, dict):
-        for l_lbl, l_val in levels.items():
-            levels_list.append(FrameLevelLine(label=str(l_lbl), elevation=float(l_val)))
-    elif isinstance(levels, (list, tuple)):
-        for l_obj in levels:
-            levels_list.append(
-                FrameLevelLine(
-                    label=str(getattr(l_obj, "label", "GL")),
-                    elevation=float(getattr(l_obj, "elevation", 0.0)),
-                )
-            )
-
-    # If no elements were found, build a representative default frame
-    if not nodes_list or not members_list:
+    if not raw_nodes_list:
         return GeneralFrameData.from_grid(
-            name="MODEL-FRAME",
+            name=getattr(model, "name", "MODEL-FRAME"),
             bays=(6000.0, 6000.0, 6000.0) if is_metric else (240.0, 240.0, 240.0),
             story_heights=(4000.0, 3500.0, 3500.0) if is_metric else (144.0, 120.0, 120.0),
             col_width=400.0 if is_metric else 16.0,
@@ -901,45 +1377,400 @@ def _model_to_general_frame_data(
             beam_depth=500.0 if is_metric else 20.0,
             title=title or "BUILDING GENERAL FRAMING ELEVATION",
             is_metric=is_metric,
+            scale=scale,
+            unit=d_unit,
         )
 
-    return GeneralFrameData(
-        name=getattr(model, "name", "MODEL-FRAME"),
-        nodes=tuple(nodes_list),
-        members=tuple(members_list),
-        grid_x=tuple(grid_x_list),
-        grid_y=tuple(grid_y_list),
-        levels=tuple(levels_list),
-        title=title or "GENERAL FRAMING ELEVATION & PLAN",
-        view_mode=view_mode,
-        is_metric=is_metric,
-    )
+    # 3. Scaled coordinates
+    scaled_nodes: Dict[Any, Tuple[float, float, float]] = {}
+    for idx, n in enumerate(raw_nodes_list):
+        nid = getattr(n, "id", idx + 1)
+        nx = float(getattr(n, "x", 0.0)) * coord_scale
+        ny = float(getattr(n, "y", 0.0)) * coord_scale
+        nz = float(getattr(n, "z", 0.0)) * coord_scale
+        scaled_nodes[nid] = (nx, ny, nz)
+
+    x_vals = [c[0] for c in scaled_nodes.values()]
+    y_vals = [c[1] for c in scaled_nodes.values()]
+    z_vals = [c[2] for c in scaled_nodes.values()]
+    is_3d = (max(z_vals) - min(z_vals)) > 20.0
+
+    # 4. Story Elevations
+    raw_elevs = getattr(model, "story_elevations", None)
+    if raw_elevs and len(raw_elevs) > 0:
+        elev_vals = _cluster_coords([float(e) * coord_scale for e in raw_elevs], tol=50.0)
+    else:
+        vert_vals = z_vals if is_3d else y_vals
+        elev_vals = _cluster_coords(vert_vals, tol=50.0)
+
+    level_lines: List[FrameLevelLine] = []
+    num_levels = len(elev_vals)
+    for idx, ev in enumerate(elev_vals):
+        if idx == 0:
+            lbl = "BASE" if ev < 0 else "GL"
+        elif idx == num_levels - 1 and num_levels > 1:
+            lbl = "ROOF"
+        else:
+            lbl = f"FL{idx}"
+        level_lines.append(FrameLevelLine(label=lbl, elevation=ev))
+
+    # 5. Grid Lines
+    explicit_grids = getattr(model, "grids", None) or getattr(model, "grid_lines", None)
+    grid_x_list: List[FrameGridLine] = []
+    grid_y_list: List[FrameGridLine] = []
+
+    if isinstance(explicit_grids, dict):
+        for g_lbl, g_val in explicit_grids.items():
+            g_coord = float(g_val) * coord_scale
+            if str(g_lbl).isalpha():
+                grid_x_list.append(FrameGridLine(label=str(g_lbl), coord=g_coord, axis="X"))
+            else:
+                grid_y_list.append(FrameGridLine(label=str(g_lbl), coord=g_coord, axis="Y"))
+    elif isinstance(explicit_grids, (list, tuple)) and len(explicit_grids) > 0:
+        for g_obj in explicit_grids:
+            lbl = str(getattr(g_obj, "label", getattr(g_obj, "name", "A")))
+            g_coord = float(getattr(g_obj, "coord", getattr(g_obj, "coordinate", 0.0))) * coord_scale
+            ax = str(getattr(g_obj, "axis", "X" if lbl.isalpha() else "Y")).upper()
+            if ax == "X":
+                grid_x_list.append(FrameGridLine(label=lbl, coord=g_coord, axis="X"))
+            else:
+                grid_y_list.append(FrameGridLine(label=lbl, coord=g_coord, axis="Y"))
+
+    if not grid_x_list:
+        x_clusters = _cluster_coords(x_vals, tol=50.0)
+        for i, xc in enumerate(x_clusters):
+            lbl = chr(65 + i) if i < 26 else f"X{i+1}"
+            grid_x_list.append(FrameGridLine(label=lbl, coord=xc, axis="X"))
+
+    if not grid_y_list:
+        y_clusters = _cluster_coords(y_vals, tol=50.0)
+        for j, yc in enumerate(y_clusters):
+            lbl = str(j + 1)
+            grid_y_list.append(FrameGridLine(label=lbl, coord=yc, axis="Y"))
+
+    # 6. Sections Map
+    sections_map: Dict[Any, Tuple[float, float, str]] = {}
+    for s in raw_sections_list:
+        sid = getattr(s, "id", None)
+        if sid is None:
+            continue
+        s_name = getattr(s, "name", None)
+        if hasattr(s, "b") and hasattr(s, "h"):
+            w = float(s.b) * sec_scale
+            d = float(s.h) * sec_scale
+            name = s_name or f"{int(w)}x{int(d)}"
+            sections_map[sid] = (w, d, name)
+        elif hasattr(s, "d"):
+            dia = float(s.d) * sec_scale
+            name = s_name or f"D{int(dia)}"
+            sections_map[sid] = (dia, dia, name)
+        else:
+            A = float(getattr(s, "A", 0.16))
+            dim = math.sqrt(A) * sec_scale if A > 0 else (400.0 if is_metric else 16.0)
+            name = s_name or f"{int(dim)}x{int(dim)}"
+            sections_map[sid] = (dim, dim, name)
+
+    # 7. Elements Extraction & Classification
+    raw_elements = getattr(model, "elements", None) or getattr(model, "members", None) or []
+    if isinstance(raw_elements, dict):
+        raw_elements_list = list(raw_elements.values())
+    else:
+        raw_elements_list = list(raw_elements)
+
+    all_members: List[FrameMember] = []
+    col_count = 0
+    beam_count = 0
+    brace_count = 0
+
+    for idx, elem in enumerate(raw_elements_list):
+        eid = getattr(elem, "id", f"E{idx+1}")
+        sn = getattr(elem, "start_node", getattr(elem, "node_i", 1))
+        en = getattr(elem, "end_node", getattr(elem, "node_j", 2))
+        p1 = scaled_nodes.get(sn)
+        p2 = scaled_nodes.get(en)
+        if not p1 or not p2:
+            continue
+
+        dx = p2[0] - p1[0]
+        dy = p2[1] - p1[1]
+        dz = p2[2] - p1[2]
+        length = math.hypot(math.hypot(dx, dy), dz)
+        if length < 1e-3:
+            continue
+
+        given_type = str(getattr(elem, "member_type", getattr(elem, "type", ""))).lower()
+        if is_3d:
+            vert_ratio = abs(dz) / length
+            if vert_ratio > 0.85:
+                m_type = "column"
+            elif vert_ratio < 0.15:
+                m_type = "beam"
+            elif given_type == "truss":
+                m_type = "truss"
+            else:
+                m_type = "brace"
+        else:
+            vert_ratio = abs(dy) / length
+            if vert_ratio > 0.85:
+                m_type = "column"
+            elif vert_ratio < 0.15:
+                m_type = "beam"
+            elif given_type == "truss":
+                m_type = "truss"
+            else:
+                m_type = "brace"
+
+        sec_id = getattr(elem, "section_id", None)
+        if sec_id in sections_map:
+            w, d, sec_name = sections_map[sec_id]
+        else:
+            def_w = 400.0 if m_type == "column" else (300.0 if is_metric else 12.0)
+            def_d = 400.0 if m_type == "column" else (500.0 if is_metric else 20.0)
+            w = float(_safe_get(elem, ("width_in", "width", "b", "bw")) or def_w)
+            d = float(_safe_get(elem, ("depth_in", "depth", "h", "height")) or def_d)
+            sec_name = f"{int(w)}x{int(d)}"
+
+        elem_name = getattr(elem, "name", None)
+        if not elem_name:
+            if m_type == "column":
+                col_count += 1
+                elem_name = f"C{col_count}"
+            elif m_type == "beam":
+                beam_count += 1
+                elem_name = f"B{beam_count}"
+            elif m_type == "truss":
+                elem_name = f"T{idx+1}"
+            else:
+                brace_count += 1
+                elem_name = f"BR{brace_count}"
+
+        all_members.append(
+            FrameMember(
+                id=eid,
+                start_node=sn,
+                end_node=en,
+                member_type=m_type,
+                name=elem_name,
+                section_name=sec_name,
+                width_in=w,
+                depth_in=d,
+            )
+        )
+
+    model_title = title or getattr(model, "name", "STRUCTURAL MODEL")
+
+    # 8. View-Specific Construction
+    if view_mode == "plan":
+        # Resolve target floor elevation
+        target_elev = None
+        target_lbl = None
+        if story_level is not None:
+            s_str = str(story_level).strip()
+            for lvl in level_lines:
+                if lvl.label.upper() == s_str.upper() or s_str.upper() in lvl.label.upper():
+                    target_elev = lvl.elevation
+                    target_lbl = lvl.label
+                    break
+            if target_elev is None:
+                try:
+                    val = float(story_level)
+                    if val.is_integer() and 0 <= int(val) < len(elev_vals):
+                        target_elev = elev_vals[int(val)]
+                        target_lbl = level_lines[int(val)].label
+                    else:
+                        target_elev = min(elev_vals, key=lambda e: abs(e - val))
+                        for lvl in level_lines:
+                            if abs(lvl.elevation - target_elev) < 50.0:
+                                target_lbl = lvl.label
+                                break
+                except ValueError:
+                    pass
+
+        if target_elev is None:
+            if len(elev_vals) > 1:
+                target_elev = elev_vals[-1]
+                target_lbl = level_lines[-1].label
+            else:
+                target_elev = elev_vals[0]
+                target_lbl = level_lines[0].label
+
+        plan_members: List[FrameMember] = []
+        plan_nodes: Dict[Any, FrameNode] = {}
+
+        for m in all_members:
+            p1 = scaled_nodes.get(m.start_node)
+            p2 = scaled_nodes.get(m.end_node)
+            if not p1 or not p2:
+                continue
+
+            z1 = p1[2] if is_3d else p1[1]
+            z2 = p2[2] if is_3d else p2[1]
+
+            if m.member_type == "beam":
+                # Include beam if its floor matches target elevation
+                if abs(z1 - target_elev) < 300.0 or abs(z2 - target_elev) < 300.0:
+                    plan_members.append(m)
+                    if m.start_node not in plan_nodes:
+                        plan_nodes[m.start_node] = FrameNode(id=m.start_node, x=p1[0], y=p1[1] if is_3d else 0.0, z=0.0)
+                    if m.end_node not in plan_nodes:
+                        plan_nodes[m.end_node] = FrameNode(id=m.end_node, x=p2[0], y=p2[1] if is_3d else 0.0, z=0.0)
+
+            elif m.member_type == "column":
+                # Include column if it connects to target elevation
+                if min(z1, z2) - 100.0 <= target_elev <= max(z1, z2) + 100.0:
+                    plan_members.append(m)
+                    # Node coordinates at target elevation
+                    col_node = m.end_node if abs(z2 - target_elev) < abs(z1 - target_elev) else m.start_node
+                    cp = scaled_nodes[col_node]
+                    plan_nodes[col_node] = FrameNode(id=col_node, x=cp[0], y=cp[1] if is_3d else 0.0, z=0.0)
+
+        # Fallback if no beams matched target elevation: include all members mapped to plan
+        if not plan_members:
+            plan_members = all_members
+            for nid, p in scaled_nodes.items():
+                plan_nodes[nid] = FrameNode(id=nid, x=p[0], y=p[1] if is_3d else 0.0, z=0.0)
+
+        plan_title = title or f"{model_title} - {target_lbl} FRAMING PLAN (EL. {target_elev:.0f})"
+        return GeneralFrameData(
+            name=getattr(model, "name", "MODEL-PLAN"),
+            nodes=tuple(plan_nodes.values()),
+            members=tuple(plan_members),
+            grid_x=tuple(grid_x_list),
+            grid_y=tuple(grid_y_list),
+            levels=tuple(level_lines),
+            title=plan_title,
+            view_mode="plan",
+            is_metric=is_metric,
+            scale=scale,
+            unit=d_unit,
+        )
+
+    elif view_mode == "elevation":
+        if not is_3d:
+            # 2D frame: all members are in elevation plane
+            elev_nodes_2d = [FrameNode(id=nid, x=p[0], y=p[1], z=0.0) for nid, p in scaled_nodes.items()]
+            elev_title = title or f"{model_title} - FRAME ELEVATION"
+            return GeneralFrameData(
+                name=getattr(model, "name", "MODEL-FRAME"),
+                nodes=tuple(elev_nodes_2d),
+                members=tuple(all_members),
+                grid_x=tuple(grid_x_list),
+                grid_y=tuple(grid_y_list),
+                levels=tuple(level_lines),
+                title=elev_title,
+                view_mode="elevation",
+                is_metric=is_metric,
+                scale=scale,
+                unit=d_unit,
+            )
+
+        # 3D frame elevation: resolve grid line plane
+        matched_grid = None
+        is_y_plane = True
+        if grid_line is not None:
+            g_str = str(grid_line).strip().upper()
+            for gy in grid_y_list:
+                if gy.label.upper() == g_str:
+                    matched_grid = gy
+                    is_y_plane = True
+                    break
+            if matched_grid is None:
+                for gx in grid_x_list:
+                    if gx.label.upper() == g_str:
+                        matched_grid = gx
+                        is_y_plane = False
+                        break
+
+        if matched_grid is None:
+            if view_axis and str(view_axis).upper() == "X":
+                matched_grid = grid_x_list[0] if grid_x_list else FrameGridLine(label="A", coord=0.0, axis="X")
+                is_y_plane = False
+            else:
+                matched_grid = grid_y_list[0] if grid_y_list else (grid_x_list[0] if grid_x_list else FrameGridLine(label="1", coord=0.0, axis="Y"))
+                is_y_plane = (matched_grid.axis == "Y")
+
+        target_coord = matched_grid.coord
+        elev_members: List[FrameMember] = []
+        elev_nodes_dict: Dict[Any, FrameNode] = {}
+
+        for m in all_members:
+            p1 = scaled_nodes.get(m.start_node)
+            p2 = scaled_nodes.get(m.end_node)
+            if not p1 or not p2:
+                continue
+
+            if is_y_plane:
+                if abs(p1[1] - target_coord) < 250.0 and abs(p2[1] - target_coord) < 250.0:
+                    elev_members.append(m)
+                    if m.start_node not in elev_nodes_dict:
+                        elev_nodes_dict[m.start_node] = FrameNode(id=m.start_node, x=p1[0], y=p1[2], z=0.0)
+                    if m.end_node not in elev_nodes_dict:
+                        elev_nodes_dict[m.end_node] = FrameNode(id=m.end_node, x=p2[0], y=p2[2], z=0.0)
+            else:
+                if abs(p1[0] - target_coord) < 250.0 and abs(p2[0] - target_coord) < 250.0:
+                    elev_members.append(m)
+                    if m.start_node not in elev_nodes_dict:
+                        elev_nodes_dict[m.start_node] = FrameNode(id=m.start_node, x=p1[1], y=p1[2], z=0.0)
+                    if m.end_node not in elev_nodes_dict:
+                        elev_nodes_dict[m.end_node] = FrameNode(id=m.end_node, x=p2[1], y=p2[2], z=0.0)
+
+        if not elev_members:
+            elev_members = all_members
+            for nid, p in scaled_nodes.items():
+                span_coord = p[0] if is_y_plane else p[1]
+                elev_nodes_dict[nid] = FrameNode(id=nid, x=span_coord, y=p[2], z=0.0)
+
+        elev_grids = grid_x_list if is_y_plane else grid_y_list
+        elev_title = title or f"{model_title} - ELEVATION GRID {matched_grid.label}"
+        return GeneralFrameData(
+            name=getattr(model, "name", "MODEL-FRAME"),
+            nodes=tuple(elev_nodes_dict.values()),
+            members=tuple(elev_members),
+            grid_x=tuple(elev_grids),
+            grid_y=tuple(grid_y_list),
+            levels=tuple(level_lines),
+            title=elev_title,
+            view_mode="elevation",
+            is_metric=is_metric,
+            scale=scale,
+            unit=d_unit,
+        )
+
+    else:
+        # view_mode == "both"
+        frame_nodes = [FrameNode(id=nid, x=p[0], y=p[1], z=p[2]) for nid, p in scaled_nodes.items()]
+        combined_title = title or f"{model_title} - GENERAL FRAMING"
+        return GeneralFrameData(
+            name=getattr(model, "name", "MODEL-FRAME"),
+            nodes=tuple(frame_nodes),
+            members=tuple(all_members),
+            grid_x=tuple(grid_x_list),
+            grid_y=tuple(grid_y_list),
+            levels=tuple(level_lines),
+            title=combined_title,
+            view_mode="both",
+            is_metric=is_metric,
+            scale=scale,
+            unit=d_unit,
+        )
 
 
-def _create_frame_member(e_id: Any, e_obj: Any, model: Any, is_metric: bool) -> FrameMember:
-    """Helper to convert a model element into a FrameMember."""
-    s_node = getattr(e_obj, "start_node", getattr(e_obj, "node_i", 1))
-    e_node = getattr(e_obj, "end_node", getattr(e_obj, "node_j", 2))
-    m_type = str(getattr(e_obj, "member_type", "beam")).lower()
-    name = str(getattr(e_obj, "name", f"{m_type[0].upper()}{e_id}"))
-
-    w = float(_safe_get(e_obj, ("width_in", "width", "b", "bw")) or (300.0 if is_metric else 12.0))
-    d = float(_safe_get(e_obj, ("depth_in", "depth", "h", "height")) or (500.0 if is_metric else 18.0))
-
-    return FrameMember(
-        id=e_id,
-        start_node=s_node,
-        end_node=e_node,
-        member_type=m_type,
-        name=name,
-        section_name=f"{int(w)}x{int(d)}",
-        width_in=w,
-        depth_in=d,
-    )
+def _model_to_general_frame_data(
+    model: Any,
+    *,
+    view_mode: str = "both",
+    title: Optional[str] = None,
+) -> GeneralFrameData:
+    """Backward-compatible alias for create_general_frame_data_from_model."""
+    return create_general_frame_data_from_model(model, view_mode=view_mode, title=title)
 
 
 __all__ = [
     "draw_from_core",
     "draw_general_frame_from_core",
+    "draw_framing_plan_from_core",
+    "draw_frame_elevation_from_core",
+    "create_general_frame_data_from_model",
 ]
+
 

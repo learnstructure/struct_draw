@@ -39,7 +39,10 @@ def main() -> None:
         column_stirrups=Stirrup(size="#3", spacing_in=6.0, legs=2),
     )
 
-    out_path = Path("output_footing_imperial.dxf")
+    out_dir = Path(__file__).resolve().parent / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = out_dir / "output_footing_imperial.dxf"
     sd.save_dxf(footing_imperial, out_path)
     print(f"Saved Imperial footing drawing to: {out_path.resolve()}")
 

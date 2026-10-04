@@ -209,8 +209,15 @@ def _render_dxf(data: Any) -> DrawingResult:
 
 def save_dxf(data: Any, path: str | Path) -> Path:
     """Render ``data`` and save it as a DXF file. Returns the saved path."""
+    if isinstance(data, DrawingResult):
+        return data.save(path)
+    if hasattr(data, "saveas"):
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data.saveas(str(path))
+        return path
     result = render(data, backend="dxf")
     return result.save(path)
 
 
-__all__ = ["DrawingResult", "render", "save_dxf", "MemberType"]
+__all__ = ["DrawingResult", "render", "save_dxf", "MemberType"]
