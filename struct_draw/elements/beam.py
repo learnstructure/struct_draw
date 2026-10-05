@@ -77,7 +77,7 @@ def section_view(
     Returns a metadata dict with the references produced during the
     draw.
     """
-    from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_20, SCALE_1_IN
+    from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_30, SCALE_1_2_IN
     from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
 
     ox, oy = origin
@@ -89,16 +89,20 @@ def section_view(
     if is_m is None:
         is_m = beam.is_metric
     d_unit = unit or (DrawingUnit.MM if is_m else DrawingUnit.IN)
-    d_scale = scale or (SCALE_1_20 if is_m else SCALE_1_IN)
+    d_scale = scale or getattr(beam, "scale", None) or (SCALE_1_30 if is_m else SCALE_1_2_IN)
 
     dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
     title_height = DEFAULT_ANNOTATION_CONFIG.title_height(d_scale, d_unit)
-    dim_style = "DIM_DETAIL" if is_m else "Linear"
+    dim_style = "DIM_SECTION" if is_m else "DIM_SECTION"
 
     refs: dict[str, Any] = {"origin": (ox, oy), "width": w, "depth": d}
 
     # ----- Concrete outline.
     draw_concrete_outline(target, origin=(ox, oy), width=w, height=d, layer="CONC_OUTLINE")
+
+    # ----- Top bars setup for geometry
+    top_bars = list(beam.top_bars) if beam.top_bars else [_default_bar("#5" if not is_m else "T16", 2, "T")]
+    corner_bar_dia = _bar_diameter(top_bars[0].size, is_metric=is_m) if top_bars else (0.5 if not is_m else 16.0)
 
     # ----- Stirrup (Double line).
     tie_size = getattr(beam.stirrups, "size", "#3") or "#3"
@@ -113,12 +117,12 @@ def section_view(
             origin=(ox + cover, oy + cover),
             tie_diameter=tie_dia,
             hook_length=max(6.0 * tie_dia, 60.0 if is_m else 3.0),
+            corner_bar_diameter=corner_bar_dia,
             double_line=True,
             layer="STIRRUP",
         )
 
     # ----- Top bars (row of dots).
-    top_bars = list(beam.top_bars) if beam.top_bars else [_default_bar("#5" if not is_m else "T16", 2, "T")]
     for bar in top_bars:
         dia = _bar_diameter(bar.size, is_metric=is_m)
         top_y = oy + d - cover - tie_dia - dia / 2.0
@@ -156,7 +160,9 @@ def section_view(
     # ----- Section title.
     if title is None:
         title = f"Section @ {beam.name}"
-    draw_text(target, title, position=(ox, oy - dim_offset * 1.6), height=title_height, layer="TEXT")
+    title_y = oy - dim_offset * 2.4
+    title_x = ox + w / 2.0 - len(title) * title_height * 0.28
+    draw_text(target, title, position=(title_x, title_y), height=title_height, layer="TEXT")
 
     refs.update({"section_origin": (ox, oy)})
     return refs

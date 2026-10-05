@@ -93,7 +93,7 @@ def plan_view(
         text_size = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
         bubble_radius = DEFAULT_ANNOTATION_CONFIG.bubble_radius(d_scale, d_unit)
         dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
-        dimstyle = "DIM_PLAN" if is_metric else "Linear"
+        dimstyle = "DIM_PLAN"
     else:
         text_size = 200.0 if is_metric else 8.0
         bubble_radius = 250.0 if is_metric else 10.0
@@ -511,7 +511,7 @@ def elevation_view(
         bubble_radius = DEFAULT_ANNOTATION_CONFIG.bubble_radius(d_scale, d_unit)
         dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
         level_ext = dim_offset * 1.5
-        dimstyle = "DIM_ELEV" if is_metric else "Linear"
+        dimstyle = "DIM_ELEV"
     else:
         text_size = 200.0 if is_metric else 8.0
         bubble_radius = 250.0 if is_metric else 10.0

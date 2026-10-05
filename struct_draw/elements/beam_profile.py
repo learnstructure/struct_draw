@@ -600,8 +600,8 @@ def section_views(
     # Title label
     draw_text(
         target,
-        "SECTION 1-1 (AT SUPPORT)",
-        position=(ox1 - (50.0 if is_metric else 2.0), oy1 - dim_gap * 2.2),
+        "SECTION 1-1",
+        position=(ox1 + w / 2.0 - len("SECTION 1-1") * text_size * 0.28, oy1 - dim_gap * 2.2),
         height=text_size,
         layer=lay_text,
     )
@@ -661,8 +661,8 @@ def section_views(
     # Title label
     draw_text(
         target,
-        "SECTION 2-2 (AT MID-SPAN)",
-        position=(ox2 - (50.0 if is_metric else 2.0), oy2 - dim_gap * 2.2),
+        "SECTION 2-2",
+        position=(ox2 + w / 2.0 - len("SECTION 2-2") * text_size * 0.28, oy2 - dim_gap * 2.2),
         height=text_size,
         layer=lay_text,
     )

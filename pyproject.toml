@@ -40,6 +40,7 @@ include = ["struct_draw*"]
 # Adds the project root to sys.path so 'import struct_draw' works in tests.
 # For scripts/examples outside of pytest, run: pip install -e .
 pythonpath = ["."]
+testpaths = ["tests"]
 
 [tool.black]
 line-length = 88

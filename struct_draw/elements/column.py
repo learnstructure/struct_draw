@@ -254,6 +254,7 @@ def section_view(
             origin=(sx0, sy0),
             hook_length=hook_len,
             hook_corner="top_left",
+            corner_bar_diameter=main_bar_dia,
             double_line=True,
             layer="STIRRUP",
         )
@@ -838,18 +839,45 @@ def drawing(
         refs_sec = section_view(target, column, origin=(sec_x, sec_y), title=f"SECTION @ {column.name}", scale=scale, unit=unit)
         sec_bbox = refs_sec["bounding_box"]
 
-    total_bbox = (
-        min(elev_bbox[0], sec_bbox[0]),
-        min(elev_bbox[1], sec_bbox[1]),
-        max(elev_bbox[2], sec_bbox[2]),
-        max(elev_bbox[3], sec_bbox[3]),
-    )
+    refs_sched = None
+    if column.schedule:
+        from struct_draw.core.composite import draw_schedule_table
+        from struct_draw.core.data import ScheduleTableData
+        sched_title = f"{column.name} REBAR SCHEDULE"
+        sched_data = ScheduleTableData(
+            title=sched_title,
+            rows=column.schedule,
+            unit="mm" if is_metric else "in",
+            scale=scale,
+        )
+        if layout == "stacked":
+            sched_y = elev_bbox[1] - (30.0 if not is_metric else 800.0)
+            refs_sched = draw_schedule_table(target, sched_data, origin=(ox, sched_y), scale=scale, unit=unit)
+        else:
+            sched_x = sec_bbox[0]
+            sched_y = sec_bbox[1] - (30.0 if not is_metric else 800.0)
+            refs_sched = draw_schedule_table(target, sched_data, origin=(sched_x, sched_y), scale=scale, unit=unit)
 
-    return {
+    min_x = min(elev_bbox[0], sec_bbox[0])
+    min_y = min(elev_bbox[1], sec_bbox[1])
+    max_x = max(elev_bbox[2], sec_bbox[2])
+    max_y = max(elev_bbox[3], sec_bbox[3])
+
+    if refs_sched is not None:
+        sb = refs_sched["bounding_box"]
+        min_x = min(min_x, sb[0])
+        min_y = min(min_y, sb[1])
+        max_x = max(max_x, sb[2])
+        max_y = max(max_y, sb[3])
+
+    result: dict[str, Any] = {
         "elevation": refs_elev,
         "section": refs_sec,
-        "bounding_box": total_bbox,
+        "bounding_box": (min_x, min_y, max_x, max_y),
     }
+    if refs_sched is not None:
+        result["schedule"] = refs_sched
+    return result
 
 
 __all__ = ["section_view", "elevation_view", "drawing"]

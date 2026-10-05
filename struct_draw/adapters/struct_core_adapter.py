@@ -96,6 +96,9 @@ def draw_from_core(
     plan_scale: Optional[Union[str, DrawingScale]] = None,
     elev_scale: Optional[Union[str, DrawingScale]] = None,
     detail_scale: Optional[Union[str, DrawingScale]] = None,
+    view_mode: str = "both",
+    story_level: Optional[Union[str, int, float]] = None,
+    grid_line: Optional[Union[str, float]] = None,
 ) -> Dict[str, Any]:
     """
     Render struct_core results into DXF drawings with full unit and scale awareness.
@@ -125,6 +128,13 @@ def draw_from_core(
         Scale specifically for frame elevation views (default: 1:50 metric or 1/4"=1'-0" imperial).
     detail_scale : str or DrawingScale, optional
         Scale specifically for member cross-sections & details (default: 1:20 metric or 1"=1'-0" imperial).
+    view_mode : str, optional
+        For composite drawings: "both" (plan + elevations), "plan" (floor framing plan only),
+        or "elevation" (frame elevations only). Default is "both".
+    story_level : str, int, or float, optional
+        Story level filter for framing plan view.
+    grid_line : str or float, optional
+        Grid line filter for frame elevation view.
 
     Returns
     -------
@@ -141,8 +151,12 @@ def draw_from_core(
     if isinstance(detailing_or_project, Project):
         project = detailing_or_project
         detailing_res = getattr(project, "detailing_result", None)
+        if detailing_res is None and getattr(project, "detailing_results", None):
+            detailing_res = next(iter(project.detailing_results.values()))
         if design_result is None:
             design_result = getattr(project, "design_result", None)
+            if design_result is None and getattr(project, "design_results", None):
+                design_result = next(iter(project.design_results.values()))
         if model_or_project is None:
             model = getattr(project, "model", None)
     elif isinstance(detailing_or_project, StructuralModel):
@@ -210,59 +224,91 @@ def draw_from_core(
     y_detailing = 0.0
 
     if model is not None and view_type in ("auto", "all"):
-        # Composite sheet: place General Arrangement (plan + elevations in each direction) at the top
-        plan_data = create_general_frame_data_from_model(
-            project or model,
-            view_mode="plan",
-            scale=p_scale,
-            unit=d_unit,
-        )
-        elev_data = create_general_frame_data_from_model(
-            project or model,
-            view_mode="elevation",
-            scale=e_scale,
-            unit=d_unit,
-        )
+        v_mode = str(view_mode or "both").lower()
+        # Determine whether model is 3D
+        raw_nodes = getattr(model, "nodes", None) or []
+        nl = list(raw_nodes.values()) if isinstance(raw_nodes, dict) else list(raw_nodes)
+        is_3d = False
+        if nl:
+            z_vals = [float(getattr(n, "z", 0.0) or 0.0) for n in nl]
+            is_3d = (max(z_vals) - min(z_vals)) > 1e-3
 
-        res_plan = general_frame.plan_view(msp, plan_data, origin=(0.0, 0.0), scale=p_scale, unit=d_unit)
-        plan_bbox = res_plan.get("bounding_box", (0.0, 0.0, 500.0, 500.0))
+        lowest_y = 0.0
+        plan_bbox = None
+        elev1_bbox = None
         margin = 3500.0 if is_metric else 140.0
 
-        if elev_data.levels:
-            elev_h = max(l.elevation for l in elev_data.levels) - min(l.elevation for l in elev_data.levels)
-        elif elev_data.nodes:
-            elev_h = max(n.y for n in elev_data.nodes) - min(n.y for n in elev_data.nodes)
-        else:
-            elev_h = 10000.0 if is_metric else 360.0
+        if v_mode in ("both", "plan"):
+            plan_data = create_general_frame_data_from_model(
+                project or model,
+                view_mode="plan",
+                story_level=story_level,
+                scale=p_scale,
+                unit=d_unit,
+            )
+            res_plan = general_frame.plan_view(msp, plan_data, origin=(0.0, 0.0), scale=p_scale, unit=d_unit)
+            plan_bbox = res_plan.get("bounding_box", (0.0, 0.0, 500.0, 500.0))
+            lowest_y = min(lowest_y, plan_bbox[1])
+            member_data_map["plan"] = plan_data
 
-        top_headroom = 1500.0 if is_metric else 60.0
-        elev_y = plan_bbox[1] - margin - elev_h - top_headroom
-        res_elev1 = general_frame.elevation_view(msp, elev_data, origin=(0.0, elev_y), scale=e_scale, unit=d_unit)
-        elev1_bbox = res_elev1.get("bounding_box", (0.0, elev_y, 5000.0, elev_y + elev_h))
-
-        lowest_y = min(plan_bbox[1], elev1_bbox[1])
-
-        # Transverse elevation for 3D models with both X and Y grids
-        if bool(plan_data.grid_x) and bool(plan_data.grid_y) and len(plan_data.grid_x) > 0 and len(plan_data.grid_y) > 0:
-            elev_data_2 = create_general_frame_data_from_model(
+        if v_mode in ("both", "elevation"):
+            elev_data = create_general_frame_data_from_model(
                 project or model,
                 view_mode="elevation",
-                view_axis="X",
+                grid_line=grid_line,
                 scale=e_scale,
                 unit=d_unit,
             )
-            elev2_x = elev1_bbox[2] + margin
-            res_elev2 = general_frame.elevation_view(msp, elev_data_2, origin=(elev2_x, elev_y), scale=e_scale, unit=d_unit)
-            elev2_bbox = res_elev2.get("bounding_box", (elev2_x, elev_y, elev2_x + 5000.0, elev_y + elev_h))
-            lowest_y = min(lowest_y, elev2_bbox[1])
-            member_data_map["elevation_transverse"] = elev_data_2
+            if elev_data.levels:
+                elev_h = max(l.elevation for l in elev_data.levels) - min(l.elevation for l in elev_data.levels)
+            elif elev_data.nodes:
+                elev_h = max(n.y for n in elev_data.nodes) - min(n.y for n in elev_data.nodes)
+            else:
+                elev_h = 10000.0 if is_metric else 360.0
 
-        member_data_map["plan"] = plan_data
-        member_data_map["elevation"] = elev_data
+            top_headroom = 1500.0 if is_metric else 60.0
+            elev_y = (plan_bbox[1] - margin - elev_h - top_headroom) if plan_bbox else 0.0
+            res_elev1 = general_frame.elevation_view(msp, elev_data, origin=(0.0, elev_y), scale=e_scale, unit=d_unit)
+            elev1_bbox = res_elev1.get("bounding_box", (0.0, elev_y, 5000.0, elev_y + elev_h))
+            lowest_y = min(lowest_y, elev1_bbox[1])
+            member_data_map["elevation"] = elev_data
+
+            # Transverse elevation for 3D models with both X and Y grids
+            if is_3d and (not grid_line) and bool(getattr(elev_data, "grid_x", None)) and bool(getattr(elev_data, "grid_y", None)) and len(elev_data.grid_x) > 0 and len(elev_data.grid_y) > 0:
+                elev_data_2 = create_general_frame_data_from_model(
+                    project or model,
+                    view_mode="elevation",
+                    view_axis="X",
+                    scale=e_scale,
+                    unit=d_unit,
+                )
+                elev2_x = elev1_bbox[2] + margin
+                res_elev2 = general_frame.elevation_view(msp, elev_data_2, origin=(elev2_x, elev_y), scale=e_scale, unit=d_unit)
+                elev2_bbox = res_elev2.get("bounding_box", (elev2_x, elev_y, elev2_x + 5000.0, elev_y + elev_h))
+                lowest_y = min(lowest_y, elev2_bbox[1])
+                member_data_map["elevation_transverse"] = elev_data_2
+
         y_detailing = lowest_y - margin
 
     elem_results = getattr(detailing_res, "element_results", {})
     des_results = getattr(design_result, "element_results", {}) if design_result else {}
+
+    # Pre-calculate detailing baseline so tall members (columns) and sections align cleanly
+    max_col_h = 0.0
+    for e_id, e_det in elem_results.items():
+        e_des = des_results.get(e_id) if des_results else None
+        m_type = _determine_member_type(e_det, e_des, model, e_id)
+        if m_type == "column":
+            _, _, _, col_len, is_m = _extract_section_properties(e_id, e_det, e_des, model, project=project, default_length=144.0)
+            max_col_h = max(max_col_h, col_len)
+
+    if max_col_h > 0:
+        h_b = min(max_col_h * 0.2, 600.0 if is_metric else 24.0)
+        h_s = min(max_col_h * 0.25, 450.0 if is_metric else 18.0)
+        top_headroom = h_b + h_s + (600.0 if is_metric else 24.0)
+        detailing_baseline_y = y_detailing - (max_col_h + top_headroom)
+    else:
+        detailing_baseline_y = y_detailing
 
     for elem_id, elem_detailing in elem_results.items():
         elem_design = des_results.get(elem_id) if des_results else None
@@ -273,11 +319,12 @@ def draw_from_core(
             beam_data = _element_to_beam_data(
                 elem_id, elem_detailing, elem_design, model, project=project, scale=det_scale, unit=d_unit
             )
+            y_beam = (detailing_baseline_y + (max_col_h - beam_data.section.depth_in) / 2.0) if max_col_h > 0 else detailing_baseline_y
             beam.section_view(
-                msp, beam_data, origin=(x_offset, y_detailing), title=f"SECTION B-{elem_id}", scale=det_scale, unit=d_unit
+                msp, beam_data, origin=(x_offset, y_beam), title=f"SECTION {beam_data.name}", scale=det_scale, unit=d_unit
             )
             member_data_map[elem_id] = beam_data
-            step = beam_data.section.width_in + (600.0 if beam_data.is_metric else 30.0)
+            step = max(beam_data.section.width_in + (1200.0 if beam_data.is_metric else 48.0), 2000.0 if beam_data.is_metric else 80.0)
             x_offset += step
             elements_drawn += 1
 
@@ -285,7 +332,7 @@ def draw_from_core(
             prof_data = _element_to_beam_profile_data(
                 elem_id, elem_detailing, elem_design, model, project=project, scale=det_scale, unit=d_unit
             )
-            beam_profile.drawing(msp, prof_data, origin=(x_offset, y_detailing), scale=det_scale, unit=d_unit)
+            beam_profile.drawing(msp, prof_data, origin=(x_offset, detailing_baseline_y), scale=det_scale, unit=d_unit)
             member_data_map[elem_id] = prof_data
             step = sum(prof_data.spans_in) + (1500.0 if prof_data.is_metric else 60.0)
             x_offset += step
@@ -296,10 +343,10 @@ def draw_from_core(
                 elem_id, elem_detailing, elem_design, model, project=project, scale=det_scale, unit=d_unit
             )
             res_col = column.drawing(
-                msp, col_data, origin=(x_offset, y_detailing), title=f"COLUMN {elem_id}", scale=det_scale, unit=d_unit
+                msp, col_data, origin=(x_offset, detailing_baseline_y), title=f"COLUMN {col_data.name}", scale=det_scale, unit=d_unit
             )
             member_data_map[elem_id] = col_data
-            col_bbox = res_col.get("bounding_box", (x_offset, y_detailing, x_offset + 100.0, y_detailing + 100.0))
+            col_bbox = res_col.get("bounding_box", (x_offset, detailing_baseline_y, x_offset + 100.0, detailing_baseline_y + col_data.height_in))
             step = (col_bbox[2] - col_bbox[0]) + (800.0 if col_data.is_metric else 40.0)
             x_offset += step
             elements_drawn += 1
@@ -356,10 +403,54 @@ def draw_from_core(
             x_offset += step
             elements_drawn += 1
 
+    # Master Project Bar Bending Schedule
+    agg_sched = getattr(detailing_res, "aggregate_schedule", None)
+    if agg_sched and getattr(agg_sched, "items", None):
+        from struct_draw.core.composite import draw_schedule_table
+        from struct_draw.core.data import ScheduleRow, ScheduleTableData
+
+        proj_rows = []
+        for it in agg_sched.items:
+            b_sz = getattr(it, "bar_size", getattr(it, "size", 8))
+            b_sz_str = f"#{b_sz}" if not is_metric and not str(b_sz).startswith("#") else (f"T{b_sz}" if is_metric and not str(b_sz).startswith("T") else str(b_sz))
+            proj_rows.append(
+                ScheduleRow(
+                    mark=str(getattr(it, "mark", "")),
+                    size=b_sz_str,
+                    quantity=int(getattr(it, "quantity", 1)),
+                    length_in=float(getattr(it, "cut_length", 0.0)),
+                    remarks=str(getattr(it, "location", "") or getattr(it, "shape_code", "")),
+                    shape_code=str(getattr(it, "shape_code", "")),
+                    total_weight=float(getattr(it, "weight", 0.0) or 0.0),
+                )
+            )
+
+        proj_table = ScheduleTableData(
+            title="PROJECT BAR BENDING SCHEDULE",
+            rows=tuple(proj_rows),
+            unit="mm" if is_metric else "in",
+            scale=det_scale,
+            total_weight=float(getattr(agg_sched, "total_weight", 0.0) or 0.0),
+        )
+
+        table_margin = 1500.0 if is_metric else 60.0
+        table_y = detailing_baseline_y - table_margin
+        draw_schedule_table(
+            msp,
+            proj_table,
+            origin=(0.0, table_y),
+            align="left",
+            scale=det_scale,
+            unit=d_unit,
+        )
+        member_data_map["project_schedule"] = proj_table
+
+    has_framing = "plan" in member_data_map or "elevation" in member_data_map
     return {
         "drawing": doc,
         "data": member_data_map,
         "elements_drawn": elements_drawn,
+        "has_framing": has_framing,
     }
 
 
@@ -599,8 +690,14 @@ def _new_doc(
     scale: Optional[Union[str, DrawingScale]] = None,
 ) -> Any:
     """Create a fully-styled DXF document matching struct_draw.backends."""
-    d_unit = DrawingUnit.from_str(str(unit)) if unit is not None else (DrawingUnit.MM if is_metric else DrawingUnit.IN)
-    d_scale = DrawingScale.from_str(str(scale), is_metric=d_unit.is_metric) if isinstance(scale, str) else scale
+    if unit is not None:
+        d_unit = DrawingUnit.from_str(unit)
+    else:
+        d_unit = DrawingUnit.MM if is_metric else DrawingUnit.IN
+    if scale is not None:
+        d_scale = DrawingScale.from_str(scale, is_metric=d_unit.is_metric)
+    else:
+        d_scale = None
     doc = new_drawing()
     register_all_styles(
         doc,
@@ -707,7 +804,7 @@ def _extract_section_properties(
     if cover is None:
         cover = _safe_get(elem_detailing, ("cover_in", "cover", "clear_cover"))
     if length is None:
-        length = _safe_get(elem_detailing, ("length_in", "length", "span", "span_in", "flight_length_in"))
+        length = _safe_get(elem_detailing, ("length_in", "length", "span", "span_in", "flight_length_in", "height", "height_in", "col_height", "column_height"))
 
     # Check bar_layout in elem_detailing if stirrup contains explicit width/height
     bar_layout = getattr(elem_detailing, "bar_layout", None)
@@ -740,7 +837,7 @@ def _extract_section_properties(
         if cover is None:
             cover = _safe_get(elem_design, ("cover_in", "cover", "clear_cover"))
         if length is None:
-            length = _safe_get(elem_design, ("length_in", "length", "span"))
+            length = _safe_get(elem_design, ("length_in", "length", "span", "height", "height_in", "col_height", "column_height"))
 
     # 3. Search model
     if model is not None:
@@ -755,13 +852,24 @@ def _extract_section_properties(
                     break
 
         if elem_obj is not None:
+            if length is None:
+                length = getattr(elem_obj, "length", None)
             # Check length from nodes
             start_node_id = getattr(elem_obj, "start_node", getattr(elem_obj, "node_i", None))
             end_node_id = getattr(elem_obj, "end_node", getattr(elem_obj, "node_j", None))
             nodes = getattr(model, "nodes", None)
-            if start_node_id and end_node_id and isinstance(nodes, dict):
-                n1 = nodes.get(start_node_id)
-                n2 = nodes.get(end_node_id)
+            if (length is None or length <= 0) and start_node_id is not None and end_node_id is not None:
+                n1, n2 = None, None
+                if isinstance(nodes, dict):
+                    n1 = nodes.get(start_node_id)
+                    n2 = nodes.get(end_node_id)
+                elif isinstance(nodes, (list, tuple)):
+                    for n in nodes:
+                        n_id = getattr(n, "id", None)
+                        if n_id == start_node_id:
+                            n1 = n
+                        if n_id == end_node_id:
+                            n2 = n
                 if n1 and n2:
                     dx = getattr(n2, "x", 0.0) - getattr(n1, "x", 0.0)
                     dy = getattr(n2, "y", 0.0) - getattr(n1, "y", 0.0)
@@ -958,8 +1066,24 @@ def _element_to_beam_data(
                 )
             )
 
+    elem_obj = None
+    if model is not None and hasattr(model, "elements"):
+        elems = getattr(model, "elements", [])
+        if isinstance(elems, dict):
+            elem_obj = elems.get(elem_id)
+        elif isinstance(elems, (list, tuple)):
+            for e in elems:
+                if getattr(e, "id", None) == elem_id:
+                    elem_obj = e
+                    break
+
+    beam_name = getattr(elem_obj, "name", None) if elem_obj else None
+    if not beam_name:
+        id_str = str(elem_id).strip()
+        beam_name = id_str if id_str.upper().startswith("B") else f"B{id_str}"
+
     return BeamData(
-        name=f"B{elem_id}",
+        name=beam_name,
         section=GeometrySection(width_in=w, depth_in=d, cover_in=cover),
         top_bars=tuple(top_rebars),
         bottom_bars=tuple(bottom_rebars),
@@ -1030,44 +1154,274 @@ def _element_to_footing_data(
     scale: Any = None,
     unit: Any = None,
 ) -> FootingData:
-    """Convert struct_core detailing/design -> struct_draw FootingData."""
-    length = _safe_get(elem_detailing, ("length_in", "length", "footing_length", "L")) or _safe_get(elem_design, ("length_in", "length", "L"))
-    width = _safe_get(elem_detailing, ("width_in", "width", "footing_width", "B")) or _safe_get(elem_design, ("width_in", "width", "B"))
-    thickness = _safe_get(elem_detailing, ("thickness_in", "thickness", "mid_thickness_in", "D")) or _safe_get(elem_design, ("thickness_in", "thickness", "D"))
-    col_w = _safe_get(elem_detailing, ("col_width_in", "col_width", "column_width")) or (400.0 if (length and length >= 1000) else 16.0)
-    col_d = _safe_get(elem_detailing, ("col_depth_in", "col_depth", "column_depth")) or (400.0 if (length and length >= 1000) else 16.0)
-
+    """Convert struct_core detailing/design -> struct_draw FootingData with consistent unit scaling."""
+    # 1. Determine unit system first
     is_metric = False
     if unit is not None:
-        is_metric = getattr(unit, "is_metric", False)
-    elif (length and length >= 1000) or (width and width >= 1000) or (thickness and thickness >= 100):
-        is_metric = True
+        from struct_draw.core.units import DrawingUnit
+        if isinstance(unit, DrawingUnit):
+            is_metric = unit.is_metric
+        elif isinstance(unit, str):
+            is_metric = DrawingUnit.from_str(unit).is_metric
+        else:
+            is_metric = getattr(unit, "is_metric", False)
+    elif project is not None or model is not None:
+        d_u, _, _ = drawing_unit_from_core(project if project is not None else model)
+        is_metric = d_u.is_metric
 
-    flen = float(length) if length else (2000.0 if is_metric else 84.0)
-    fwid = float(width) if width else (2000.0 if is_metric else 84.0)
-    fthk = float(thickness) if thickness else (450.0 if is_metric else 18.0)
-    edge_thk = float(_safe_get(elem_detailing, ("edge_thickness_in", "edge_thickness")) or (200.0 if is_metric else 10.0))
+    # 2. Extract column dimensions - search connected column in model first
+    col_w = None
+    col_d = None
+    col_h = None
+    target_node_id = None
+    eid_str = str(elem_id).strip()
+    if eid_str.upper().startswith("F"):
+        try:
+            target_node_id = int(eid_str[1:])
+        except ValueError:
+            target_node_id = eid_str[1:]
+    else:
+        try:
+            target_node_id = int(eid_str)
+        except ValueError:
+            target_node_id = eid_str
 
-    bar_dia = float(_safe_get(elem_detailing, ("bar_dia_in", "bar_diameter", "bar_dia")) or (12.0 if is_metric else 0.625))
-    bar_sp = float(_safe_get(elem_detailing, ("bar_spacing_in", "bar_spacing")) or (150.0 if is_metric else 6.0))
-    cover = float(_safe_get(elem_detailing, ("cover_in", "cover")) or (75.0 if is_metric else 3.0))
+    if model is not None and target_node_id is not None:
+        elems = getattr(model, "elements", None) or getattr(model, "members", None) or []
+        elem_list = list(elems.values()) if isinstance(elems, dict) else list(elems)
+        for cand in elem_list:
+            s_n = getattr(cand, "start_node", getattr(cand, "node_i", None))
+            e_n = getattr(cand, "end_node", getattr(cand, "node_j", None))
+            if s_n == target_node_id or e_n == target_node_id:
+                sec_id = getattr(cand, "section_id", None)
+                secs = getattr(model, "sections", getattr(model, "cross_sections", None)) or {}
+                s_dict = secs if isinstance(secs, dict) else {getattr(s, "id", None): s for s in secs}
+                sec_obj = s_dict.get(sec_id) if sec_id else getattr(cand, "section", None)
+                if sec_obj is not None:
+                    bw = _safe_get(sec_obj, ("b", "width", "width_in", "bw"))
+                    bh = _safe_get(sec_obj, ("h", "depth", "depth_in", "height"))
+                    if bw is not None and bh is not None:
+                        col_w = float(bw)
+                        col_d = float(bh)
+                        col_len = getattr(cand, "length", None)
+                        if col_len is not None:
+                            col_h = float(col_len)
+                        break
 
-    return FootingData(
-        name=f"F{elem_id}",
-        length_in=flen,
-        width_in=fwid,
-        mid_thickness_in=fthk,
-        edge_thickness_in=edge_thk,
-        column_width_in=float(col_w),
-        column_depth_in=float(col_d),
-        footing_depth_in=1500.0 if is_metric else 60.0,
-        plinth_height_in=300.0 if is_metric else 12.0,
-        cover_in=cover,
-        bar_dia_in=bar_dia,
-        bar_spacing_in=bar_sp,
-        scale=scale,
-        unit=unit,
-    )
+    if col_w is None:
+        col_w = _safe_get(elem_detailing, ("col_width_in", "col_width", "column_width", "c1", "col_c1")) or _safe_get(elem_design, ("col_width_in", "col_width", "column_width", "c1", "col_c1"))
+    if col_d is None:
+        col_d = _safe_get(elem_detailing, ("col_depth_in", "col_depth", "column_depth", "c2", "col_c2")) or _safe_get(elem_design, ("col_depth_in", "col_depth", "column_depth", "c2", "col_c2"))
+
+    # Convert column dimensions to target unit system
+    if is_metric:
+        if col_w is None:
+            col_w = 400.0
+        else:
+            col_w = float(col_w)
+            if col_w <= 2.5:  # meters -> mm (e.g. 0.40 m -> 400.0 mm)
+                col_w = col_w * 1000.0
+            elif col_w < 50.0:  # inches -> mm (e.g. 16.0 in -> 406.4 mm)
+                col_w = col_w * 25.4
+        if col_d is None:
+            col_d = 400.0
+        else:
+            col_d = float(col_d)
+            if col_d <= 2.5:
+                col_d = col_d * 1000.0
+            elif col_d < 50.0:
+                col_d = col_d * 25.4
+        if col_h is not None:
+            col_h = float(col_h)
+            if col_h <= 10.0:  # meters -> mm
+                col_h = col_h * 1000.0
+            elif col_h < 150.0:  # inches -> mm
+                col_h = col_h * 25.4
+        else:
+            col_h = 2100.0
+    else:
+        if col_w is None:
+            col_w = 16.0
+        else:
+            col_w = float(col_w)
+            if col_w <= 2.5:
+                col_w = col_w * 39.37007874
+            elif col_w >= 50.0:
+                col_w = col_w / 25.4
+        if col_d is None:
+            col_d = 16.0
+        else:
+            col_d = float(col_d)
+            if col_d <= 2.5:
+                col_d = col_d * 39.37007874
+            elif col_d >= 50.0:
+                col_d = col_d / 25.4
+        if col_h is not None:
+            col_h = float(col_h)
+            if col_h <= 10.0:
+                col_h = col_h * 39.37007874
+            elif col_h >= 150.0:
+                col_h = col_h / 25.4
+        else:
+            col_h = 84.0
+
+    # 3. Extract footing plan & thickness dimensions
+    raw_l = _safe_get(elem_detailing, ("length_in", "length", "footing_length", "L")) or _safe_get(elem_design, ("length_in", "length", "L"))
+    raw_w = _safe_get(elem_detailing, ("width_in", "width", "footing_width", "B")) or _safe_get(elem_design, ("width_in", "width", "B"))
+    raw_t = _safe_get(elem_detailing, ("thickness_in", "thickness", "mid_thickness_in", "D")) or _safe_get(elem_design, ("thickness_in", "thickness", "D"))
+
+    if is_metric:
+        if raw_l is None:
+            flen = 2000.0
+        else:
+            raw_l = float(raw_l)
+            if raw_l <= 4.0:  # meters -> mm (e.g. 2.0 m -> 2000 mm)
+                flen = raw_l * 1000.0
+            elif raw_l <= 12.0:  # feet -> mm (e.g. 5.0 ft -> 1524 mm)
+                flen = raw_l * 304.8
+            elif raw_l < 250.0:  # inches -> mm (e.g. 60.0 in -> 1524 mm)
+                flen = raw_l * 25.4
+            else:
+                flen = raw_l
+
+        if raw_w is None:
+            fwid = flen
+        else:
+            raw_w = float(raw_w)
+            if raw_w <= 4.0:
+                fwid = raw_w * 1000.0
+            elif raw_w <= 12.0:
+                fwid = raw_w * 304.8
+            elif raw_w < 250.0:
+                fwid = raw_w * 25.4
+            else:
+                fwid = raw_w
+
+        if raw_t is None:
+            fthk = 450.0
+        else:
+            raw_t = float(raw_t)
+            if raw_t <= 2.5:  # meters -> mm
+                fthk = raw_t * 1000.0
+            elif raw_t < 50.0:  # inches -> mm (e.g. 16.0 in -> 406.4 mm)
+                fthk = raw_t * 25.4
+            else:
+                fthk = raw_t
+
+        raw_edge = _safe_get(elem_detailing, ("edge_thickness_in", "edge_thickness")) or _safe_get(elem_design, ("edge_thickness_in", "edge_thickness"))
+        if raw_edge is not None:
+            raw_edge = float(raw_edge)
+            edge_thk = raw_edge * 25.4 if raw_edge < 50.0 else raw_edge
+        else:
+            edge_thk = min(200.0, fthk * 0.5)
+
+        raw_cover = _safe_get(elem_detailing, ("cover_in", "cover"))
+        cover = float(raw_cover) * 25.4 if (raw_cover and float(raw_cover) < 10.0) else (float(raw_cover) if raw_cover else 75.0)
+
+        raw_dia = _safe_get(elem_detailing, ("bar_dia_in", "bar_diameter", "bar_dia"))
+        bar_dia = float(raw_dia) * 25.4 if (raw_dia and float(raw_dia) < 3.0) else (float(raw_dia) if raw_dia else 12.0)
+
+        raw_sp = _safe_get(elem_detailing, ("bar_spacing_in", "bar_spacing"))
+        bar_sp = float(raw_sp) * 25.4 if (raw_sp and float(raw_sp) < 20.0) else (float(raw_sp) if raw_sp else 150.0)
+
+    else:  # imperial
+        flen = float(raw_l) if raw_l else 84.0
+        if flen >= 250.0:
+            flen = flen / 25.4
+        fwid = float(raw_w) if raw_w else 84.0
+        if fwid >= 250.0:
+            fwid = fwid / 25.4
+        fthk = float(raw_t) if raw_t else 18.0
+        if fthk >= 100.0:
+            fthk = fthk / 25.4
+
+        raw_edge = _safe_get(elem_detailing, ("edge_thickness_in", "edge_thickness")) or _safe_get(elem_design, ("edge_thickness_in", "edge_thickness"))
+        edge_thk = float(raw_edge) if raw_edge else 10.0
+        if edge_thk >= 100.0:
+            edge_thk = edge_thk / 25.4
+
+        raw_cover = _safe_get(elem_detailing, ("cover_in", "cover"))
+        cover = float(raw_cover) / 25.4 if (raw_cover and float(raw_cover) >= 20.0) else (float(raw_cover) if raw_cover else 3.0)
+
+        raw_dia = _safe_get(elem_detailing, ("bar_dia_in", "bar_diameter", "bar_dia"))
+        bar_dia = float(raw_dia) / 25.4 if (raw_dia and float(raw_dia) >= 6.0) else (float(raw_dia) if raw_dia else 0.625)
+
+        raw_sp = _safe_get(elem_detailing, ("bar_spacing_in", "bar_spacing"))
+        bar_sp = float(raw_sp) / 25.4 if (raw_sp and float(raw_sp) >= 50.0) else (float(raw_sp) if raw_sp else 6.0)
+
+    # 4. Schedule rows
+    sched_rows: List[ScheduleRow] = []
+    schedule = getattr(elem_detailing, "bar_schedule", None)
+    if schedule and hasattr(schedule, "items"):
+        for item in schedule.items:
+            b_size = getattr(item, "bar_size", getattr(item, "size", 4 if not is_metric else 12))
+            b_size_str = f"#{b_size}" if not is_metric and not str(b_size).startswith("#") else (f"T{b_size}" if is_metric and not str(b_size).startswith("T") else str(b_size))
+            b_qty = getattr(item, "quantity", getattr(item, "count", 1))
+            raw_cut_len = float(getattr(item, "cut_length", flen))
+            if is_metric and raw_cut_len < 250.0:
+                cut_len_disp = raw_cut_len * 25.4
+            elif (not is_metric) and raw_cut_len >= 250.0:
+                cut_len_disp = raw_cut_len / 25.4
+            else:
+                cut_len_disp = raw_cut_len
+            sched_rows.append(
+                ScheduleRow(
+                    mark=getattr(item, "mark", ""),
+                    size=b_size_str,
+                    quantity=int(b_qty),
+                    length_in=cut_len_disp,
+                    remarks=getattr(item, "shape_code", "") or getattr(item, "location", ""),
+                    shape_code=getattr(item, "shape_code", ""),
+                    total_weight=float(getattr(item, "weight", 0.0) or 0.0),
+                )
+            )
+
+    if is_metric:
+        return FootingData.from_metric(
+            name=f"F{elem_id}",
+            length=flen,
+            width=fwid,
+            mid_thick=fthk,
+            edge_thick=edge_thk,
+            col_width=float(col_w),
+            col_depth=float(col_d),
+            col_height=col_h,
+            fd_depth=1500.0,
+            pl_height=300.0,
+            cover=cover,
+            bar_dia=bar_dia,
+            bar_spacing=bar_sp,
+            ld=600.0,
+            ledge=100.0,
+            pcc_thick=75.0,
+            soling_thick=75.0,
+            schedule=tuple(sched_rows),
+            scale=scale,
+            unit=unit,
+        )
+    else:
+        return FootingData(
+            name=f"F{elem_id}",
+            length_in=flen,
+            width_in=fwid,
+            mid_thickness_in=fthk,
+            edge_thickness_in=edge_thk,
+            column_width_in=float(col_w),
+            column_depth_in=float(col_d),
+            column_height_in=col_h,
+            footing_depth_in=60.0,
+            plinth_height_in=12.0,
+            cover_in=cover,
+            bar_dia_in=bar_dia,
+            bar_spacing_in=bar_sp,
+            development_length_in=24.0,
+            ledge_in=4.0,
+            pcc_thickness_in=3.0,
+            soling_thickness_in=3.0,
+            schedule=tuple(sched_rows),
+            scale=scale,
+            unit=unit,
+        )
 
 
 def _element_to_combined_footing_data(
@@ -1160,11 +1514,48 @@ def _element_to_column_data(
     if not bars_list:
         bars_list = [Rebar(mark="C1", size="T20" if is_metric else "#8", quantity=8, length_in=length)]
 
+    elem_obj = None
+    if model is not None and hasattr(model, "elements"):
+        elems = getattr(model, "elements", [])
+        if isinstance(elems, dict):
+            elem_obj = elems.get(elem_id)
+        elif isinstance(elems, (list, tuple)):
+            for e in elems:
+                if getattr(e, "id", None) == elem_id:
+                    elem_obj = e
+                    break
+
+    col_name = getattr(elem_obj, "name", None) if elem_obj else None
+    if not col_name:
+        id_str = str(elem_id).strip()
+        col_name = id_str if id_str.upper().startswith("C") else f"C{id_str}"
+
+    sched_rows: List[ScheduleRow] = []
+    schedule = getattr(elem_detailing, "bar_schedule", None)
+    if schedule and hasattr(schedule, "items"):
+        for item in schedule.items:
+            b_size = getattr(item, "bar_size", getattr(item, "size", 8 if not is_metric else 20))
+            b_size_str = f"#{b_size}" if not is_metric and not str(b_size).startswith("#") else (f"T{b_size}" if is_metric and not str(b_size).startswith("T") else str(b_size))
+            b_qty = getattr(item, "quantity", getattr(item, "count", 1))
+            sched_rows.append(
+                ScheduleRow(
+                    mark=getattr(item, "mark", ""),
+                    size=b_size_str,
+                    quantity=int(b_qty),
+                    length_in=float(getattr(item, "cut_length", length)),
+                    remarks=getattr(item, "shape_code", "") or getattr(item, "location", ""),
+                    shape_code=getattr(item, "shape_code", ""),
+                    total_weight=float(getattr(item, "weight", 0.0) or 0.0),
+                )
+            )
+
     return ColumnData(
-        name=f"C{elem_id}",
+        name=col_name,
         section=GeometrySection(width_in=w, depth_in=d, cover_in=cover),
+        height_in=float(length),
         longitudinal_bars=tuple(bars_list),
         stirrups=tie_obj,
+        schedule=tuple(sched_rows),
         scale=scale,
         unit=unit,
     )
@@ -1532,17 +1923,26 @@ def create_general_frame_data_from_model(
 
         elem_name = getattr(elem, "name", None)
         if not elem_name:
-            if m_type == "column":
-                col_count += 1
-                elem_name = f"C{col_count}"
-            elif m_type == "beam":
-                beam_count += 1
-                elem_name = f"B{beam_count}"
-            elif m_type == "truss":
-                elem_name = f"T{idx+1}"
+            raw_id = getattr(elem, "id", None)
+            if raw_id is not None and str(raw_id).strip():
+                id_str = str(raw_id).strip()
+                prefix = {"column": "C", "beam": "B", "truss": "T", "brace": "BR"}.get(m_type, "M")
+                if id_str.upper().startswith(prefix):
+                    elem_name = id_str
+                else:
+                    elem_name = f"{prefix}{id_str}"
             else:
-                brace_count += 1
-                elem_name = f"BR{brace_count}"
+                if m_type == "column":
+                    col_count += 1
+                    elem_name = f"C{col_count}"
+                elif m_type == "beam":
+                    beam_count += 1
+                    elem_name = f"B{beam_count}"
+                elif m_type == "truss":
+                    elem_name = f"T{idx+1}"
+                else:
+                    brace_count += 1
+                    elem_name = f"BR{brace_count}"
 
         all_members.append(
             FrameMember(

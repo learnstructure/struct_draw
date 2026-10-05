@@ -282,16 +282,63 @@ def test_column_section_hooks_and_leaders() -> None:
     leader_ents = [e for e in t.entities if e[0] == 'leader']
     assert len(leader_ents) == 2, f"Expected 2 leaders in section view, got {len(leader_ents)}"
 
-    # Verify stirrup lines in section include the 135° hook legs wrapping around the top-left corner rebar
-    # Leg 1 starts on top stirrup line to the right of corner bar: (1.5 + 0.375 + 1.0, 16.5) = (2.875, 16.5)
-    # Leg 2 starts on left stirrup line below corner bar: (1.5, 16.5 - 0.375 - 1.0) = (1.5, 15.125)
+    # Verify stirrup entities in section include the outer and inner double-line stirrup with 135° hooks
     stirrup_lines = [
         e for e in t.entities
-        if e[0] == 'line' and (e[2].get('layer') == 'STIRRUP' or e[2].get('dxfattribs', {}).get('layer') == 'STIRRUP')
+        if e[0] in ('line', 'poly') and (e[2].get('layer') == 'STIRRUP' or e[2].get('dxfattribs', {}).get('layer') == 'STIRRUP')
     ]
-    assert len(stirrup_lines) >= 2, "Expected at least 2 hook leg lines"
+    assert len(stirrup_lines) >= 2, "Expected at least 2 stirrup entities"
     leg1_start = stirrup_lines[0][1][0]
     leg2_start = stirrup_lines[1][1][0]
     # assert abs(leg1_start[0] - 2.875) < 1e-5 and abs(leg1_start[1] - 16.5) < 1e-5, f"Leg 1 must start on top stirrup line past bar (2.875, 16.5), got {leg1_start}"
     # assert abs(leg2_start[0] - 1.5) < 1e-5 and abs(leg2_start[1] - 15.125) < 1e-5, f"Leg 2 must start on left stirrup line below bar (1.5, 15.125), got {leg2_start}"
+
+
+def test_draw_schedule_table():
+    from struct_draw.core.composite import draw_schedule_table
+    from struct_draw.core.data import ScheduleTableData, ScheduleRow
+
+    class Target:
+        def __init__(self):
+            self.entities = []
+        def add_line(self, *a, **k): self.entities.append(('line', a, k))
+        def add_lwpolyline(self, *a, **k): self.entities.append(('poly', a, k))
+        def add_text(self, *a, **k): self.entities.append(('text', a, k))
+        def add_mtext(self, text, *a, **k):
+            class MText:
+                def set_location(self, *a, **k): pass
+            self.entities.append(('mtext', text, a, k))
+            return MText()
+
+    sched = ScheduleTableData(
+        title="FOOTING REBAR SCHEDULE",
+        rows=[
+            ScheduleRow(mark="F1-X", size="#6", quantity=16, length_in=90.0, remarks="Straight"),
+            ScheduleRow(mark="F1-Y", size="#6", quantity=16, length_in=90.0, remarks="Straight"),
+        ],
+        unit="in",
+        include_weights=False,
+    )
+    t = Target()
+    res = draw_schedule_table(t, sched, origin=(0.0, 0.0))
+    assert res is not None
+    assert "bounding_box" in res
+    lines = [e for e in t.entities if e[0] == 'line']
+    texts = [e for e in t.entities if e[0] in ('text', 'mtext')]
+    # Grid lines and text cells
+    assert len(lines) >= 6
+    assert len(texts) >= 10
+
+    # Test center alignment
+    t_center = Target()
+    res_center = draw_schedule_table(t_center, sched, origin=(0.0, 0.0), align="center")
+    bb_center = res_center["bounding_box"]
+    assert abs((bb_center[0] + bb_center[2]) / 2.0 - 0.0) < 1e-4
+
+    # Test right alignment
+    t_right = Target()
+    res_right = draw_schedule_table(t_right, sched, origin=(0.0, 0.0), align="right")
+    bb_right = res_right["bounding_box"]
+    assert abs(bb_right[2] - 0.0) < 1e-4
+
 

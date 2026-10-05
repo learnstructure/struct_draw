@@ -122,3 +122,7 @@ trash/
 
 *.pdf
 README.pdf
+
+# Scratch & helper scripts
+scratch/
+powershell.cmd

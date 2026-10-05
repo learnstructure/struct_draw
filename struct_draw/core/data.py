@@ -116,6 +116,45 @@ class ScheduleRow:
     quantity: int
     length_in: float
     remarks: str = ""
+    shape_code: str = ""
+    unit_weight: float | None = None
+    total_weight: float | None = None
+
+
+@dataclass(frozen=True)
+class ScheduleTableData:
+    """All information needed to draw a bar bending schedule table.
+
+    Attributes
+    ----------
+    title
+        Heading text for the table (e.g. ``"BAR BENDING SCHEDULE"``).
+    rows
+        Sequence of :class:`ScheduleRow` objects.
+    unit
+        Drawing unit (e.g. ``DrawingUnit.MM``, ``DrawingUnit.IN``).
+    scale
+        Drawing scale (e.g. ``"1:50"``, ``"1/4\"=1'-0\""``).
+    include_weights
+        Whether to calculate and display unit weights and total weights.
+    total_weight
+        Explicit override for total weight (lbs or kg). If None, calculated automatically.
+    remarks
+        Optional notes or remarks rendered under the table.
+    """
+
+    title: str = "BAR BENDING SCHEDULE"
+    rows: Sequence[ScheduleRow] = field(default_factory=tuple)
+    unit: Any = None
+    scale: Any = None
+    include_weights: bool = True
+    total_weight: float | None = None
+    remarks: str = ""
+
+    @property
+    def is_metric(self) -> bool:
+        """True if the table is formatted in SI metric units."""
+        return _resolve_unit_is_metric(self.unit, False)
 
 
 @dataclass(frozen=True)
@@ -444,6 +483,7 @@ class FootingData:
     plinth_beam_depth_in: float = 0.0
     foundation_beam_width_in: float = 0.0
     foundation_beam_depth_in: float = 0.0
+    schedule: Sequence[ScheduleRow] = field(default_factory=tuple)
     scale: Any = None
     unit: Any = None
 
@@ -480,6 +520,7 @@ class FootingData:
         found_beam_h: float | None = None,
         column_bars: Sequence[Rebar] = (),
         column_stirrups: Stirrup | None = None,
+        schedule: Sequence[ScheduleRow] = (),
         scale: Any = None,
         unit: Any = None,
     ) -> FootingData:
@@ -530,6 +571,7 @@ class FootingData:
             foundation_beam_depth_in=_found_beam_h,
             column_bars=column_bars,
             column_stirrups=column_stirrups or Stirrup(size="8mm dia", spacing_in=100.0),
+            schedule=schedule,
             scale=scale,
             unit=unit or "mm",
         )
@@ -562,6 +604,7 @@ class FootingData:
         found_beam_h: float | None = None,
         column_bars: Sequence[Rebar] = (),
         column_stirrups: Stirrup | None = None,
+        schedule: Sequence[ScheduleRow] = (),
         scale: Any = None,
         unit: Any = None,
     ) -> FootingData:
@@ -612,6 +655,7 @@ class FootingData:
             foundation_beam_depth_in=_found_beam_h,
             column_bars=column_bars,
             column_stirrups=column_stirrups or Stirrup(size="#3", spacing_in=6.0),
+            schedule=schedule,
             scale=scale,
             unit=unit or "in",
         )
@@ -690,6 +734,7 @@ class CombinedFootingData:
     column_bars: Sequence[Rebar] = field(default_factory=tuple)
     column_stirrups: Stirrup = field(default_factory=Stirrup)
     development_length_in: float = 24.0
+    schedule: Sequence[ScheduleRow] = field(default_factory=tuple)
     scale: Any = None
     unit: Any = None
 
@@ -734,6 +779,9 @@ class CombinedFootingData:
         ld: float | None = None,
         column_bars: Sequence[Rebar] = (),
         column_stirrups: Stirrup | None = None,
+        schedule: Sequence[ScheduleRow] = (),
+        scale: Any = None,
+        unit: Any = None,
     ) -> CombinedFootingData:
         """Construct CombinedFootingData directly from SI metric parameters."""
         _proj_left = proj_left if proj_left is not None else 1500.0
@@ -788,6 +836,9 @@ class CombinedFootingData:
             development_length_in=_ld,
             column_bars=column_bars,
             column_stirrups=column_stirrups or Stirrup(size="8mm dia", spacing_in=100.0),
+            schedule=schedule,
+            scale=scale,
+            unit=unit or "mm",
         )
 
     @classmethod
@@ -821,6 +872,9 @@ class CombinedFootingData:
         ld: float | None = None,
         column_bars: Sequence[Rebar] = (),
         column_stirrups: Stirrup | None = None,
+        schedule: Sequence[ScheduleRow] = (),
+        scale: Any = None,
+        unit: Any = None,
     ) -> CombinedFootingData:
         """Construct CombinedFootingData directly from Imperial parameters (in inches)."""
         _proj_left = proj_left if proj_left is not None else 60.0
@@ -875,6 +929,9 @@ class CombinedFootingData:
             development_length_in=_ld,
             column_bars=column_bars,
             column_stirrups=column_stirrups or Stirrup(size="#3", spacing_in=6.0),
+            schedule=schedule,
+            scale=scale,
+            unit=unit or "in",
         )
 
 
@@ -1623,6 +1680,7 @@ __all__ = [
     "Rebar",
     "Stirrup",
     "ScheduleRow",
+    "ScheduleTableData",
     "GeometrySection",
     "BeamData",
     "BeamProfileSpan",

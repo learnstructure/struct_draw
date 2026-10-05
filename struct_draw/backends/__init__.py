@@ -25,6 +25,7 @@ from struct_draw.core.data import (
     FramingPlanData,
     GeneralFrameData,
     MemberType,
+    ScheduleTableData,
     SlabData,
     StaircaseData,
     TrussData,
@@ -124,8 +125,18 @@ def _render_dxf(data: Any) -> DrawingResult:
     3. Dispatches ``data`` to the matching element function based
        on its type.
     """
+    scale = getattr(data, "scale", None)
+    unit = getattr(data, "unit", None)
+
     is_metric = False
-    if hasattr(data, "is_metric"):
+    if unit is not None:
+        try:
+            from struct_draw.core.units import DrawingUnit
+            du = DrawingUnit.from_str(unit)
+            is_metric = (du == DrawingUnit.MM)
+        except Exception:
+            pass
+    elif hasattr(data, "is_metric"):
         is_metric = bool(data.is_metric)
     elif hasattr(data, "section") and hasattr(data.section, "width_in"):
         is_metric = float(data.section.width_in) >= 100.0 or float(data.section.depth_in) >= 100.0
@@ -143,60 +154,115 @@ def _render_dxf(data: Any) -> DrawingResult:
     )
 
     metadata: dict[str, Any] = {"element": type(data).__name__, "is_metric": is_metric}
+    if scale is not None:
+        metadata["scale"] = str(scale)
+    if unit is not None:
+        metadata["unit"] = str(unit)
 
     msp = doc.modelspace()
 
+    extra_kw: dict[str, Any] = {}
+    if scale is not None:
+        extra_kw["scale"] = scale
+    if unit is not None:
+        extra_kw["unit"] = unit
+
     if isinstance(data, BeamData):
-        beam.section_view(msp, data)
+        beam.section_view(msp, data, **extra_kw)
         metadata["view"] = "section"
     elif isinstance(data, BeamProfileData):
-        beam_profile.drawing(msp, data)
+        beam_profile.drawing(msp, data, **extra_kw)
         metadata["views"] = ["profile", "section"]
     elif isinstance(data, FootingData):
-        footing.section_view(msp, data)
+        ref_sec = footing.section_view(msp, data, **extra_kw)
         footing_margin = 800.0 if is_metric else 35.0
         y_offset = -(data.footing_depth_in + data.plinth_height_in + data.width_in / 2.0 + footing_margin)
-        footing.plan_view(msp, data, origin=(0.0, y_offset))
-        metadata["views"] = ["section", "plan"]
+        ref_plan = footing.plan_view(msp, data, origin=(0.0, y_offset), **extra_kw)
+        views = ["section", "plan"]
+        if data.schedule:
+            from struct_draw.core.composite import draw_schedule_table
+            plan_bb = ref_plan.get("bounding_box", (0.0, y_offset - data.width_in / 2.0, 0.0, y_offset))
+            sched_y = plan_bb[1] - footing_margin
+            draw_schedule_table(
+                msp,
+                ScheduleTableData(
+                    title=f"{data.name} REBAR SCHEDULE",
+                    rows=data.schedule,
+                    unit="mm" if is_metric else "in",
+                    scale=scale,
+                ),
+                origin=(0.0, sched_y),
+                align="center",
+                **extra_kw,
+            )
+            views.append("schedule")
+        metadata["views"] = views
     elif isinstance(data, CombinedFootingData):
-        combined_footing.section_view(msp, data)
+        ref_sec = combined_footing.section_view(msp, data, **extra_kw)
         cf_margin = 800.0 if is_metric else 35.0
         y_offset = -(data.footing_depth_in + data.plinth_height_in + data.width_in / 2.0 + cf_margin)
-        combined_footing.plan_view(msp, data, origin=(0.0, y_offset))
-        metadata["views"] = ["section", "plan"]
+        ref_plan = combined_footing.plan_view(msp, data, origin=(0.0, y_offset), **extra_kw)
+        views = ["section", "plan"]
+        if data.schedule:
+            from struct_draw.core.composite import draw_schedule_table
+            plan_bb = ref_plan.get("bounding_box", (0.0, y_offset - data.width_in / 2.0, 0.0, y_offset))
+            sched_y = plan_bb[1] - cf_margin
+            center_x = (-data.proj_left_in + (data.col_spacing_in + data.proj_right_in)) / 2.0
+            draw_schedule_table(
+                msp,
+                ScheduleTableData(
+                    title=f"{data.name} REBAR SCHEDULE",
+                    rows=data.schedule,
+                    unit="mm" if is_metric else "in",
+                    scale=scale,
+                ),
+                origin=(center_x, sched_y),
+                align="center",
+                **extra_kw,
+            )
+            views.append("schedule")
+        metadata["views"] = views
     elif isinstance(data, ColumnData):
-        column.drawing(msp, data)
-        metadata["views"] = ["elevation", "section"]
+        refs = column.drawing(msp, data, **extra_kw)
+        views = ["elevation", "section"]
+        if data.schedule or (isinstance(refs, dict) and "schedule" in refs):
+            views.append("schedule")
+        metadata["views"] = views
     elif isinstance(data, StaircaseData):
-        staircase.section_view(msp, data)
+        staircase.section_view(msp, data, **extra_kw)
         staircase_margin = 1500.0 if is_metric else 60.0
         y_offset = -(data.flight_width_in * 2.5 + staircase_margin)
-        staircase.plan_view(msp, data, origin=(0.0, y_offset))
+        staircase.plan_view(msp, data, origin=(0.0, y_offset), **extra_kw)
         metadata["views"] = ["section", "plan"]
     elif isinstance(data, SlabData):
-        slab.plan_view(msp, data)
+        slab.plan_view(msp, data, **extra_kw)
         slab_margin = 1000.0 if is_metric else 50.0
         y_offset = -(data.width_in + slab_margin)
-        slab.section_view(msp, data, origin=(0.0, y_offset))
+        slab.section_view(msp, data, origin=(0.0, y_offset), **extra_kw)
         metadata["views"] = ["plan", "section"]
     elif isinstance(data, FramingPlanData):
-        general_frame.plan_view(msp, data)
+        general_frame.plan_view(msp, data, **extra_kw)
         metadata["view"] = "framing_plan"
     elif isinstance(data, FrameElevationData):
-        general_frame.elevation_view(msp, data)
+        general_frame.elevation_view(msp, data, **extra_kw)
         metadata["view"] = "frame_elevation"
     elif isinstance(data, TrussData):
-        general_frame.truss_view(msp, data)
+        general_frame.truss_view(msp, data, **extra_kw)
         metadata["view"] = "truss_outline"
     elif isinstance(data, GeneralFrameData):
-        general_frame.drawing(msp, data)
+        general_frame.drawing(msp, data, **extra_kw)
         metadata["view"] = data.view_mode
+    elif isinstance(data, ScheduleTableData):
+        from struct_draw.core.composite import draw_schedule_table
+        draw_schedule_table(msp, data, **extra_kw)
+        metadata["view"] = "schedule_table"
     else:
         raise BackendError(
             f"Unsupported data type: {type(data).__name__}. "
             f"Expected one of: BeamData, BeamProfileData, FootingData, "
             f"CombinedFootingData, ColumnData, StaircaseData, SlabData, "
-            f"GeneralFrameData, FramingPlanData, FrameElevationData, TrussData."
+            f"GeneralFrameData, FramingPlanData, FrameElevationData, TrussData, "
+            f"ScheduleTableData."
         )
 
     return DrawingResult(backend="dxf", document=doc, metadata=metadata)

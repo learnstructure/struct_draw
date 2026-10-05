@@ -403,7 +403,7 @@ def section_view(
     # -----------------------------------------------------------------------
     # 6. Step Nosing Bars & Nosing Stirrups
     # -----------------------------------------------------------------------
-    step_idx = min(3, n_riser - 2)
+    step_idx = min(5, n_riser - 2)
     pnose_x = ox + d1 + step_idx * tread + (20.0 if is_metric else 0.8)
     pnose_y = oy + (step_idx + 1) * riser - (20.0 if is_metric else 0.8)
 
@@ -689,7 +689,7 @@ def plan_view(
     # 7. Title Block (Centered at Bottom of Plan)
     plan_title_str = title if title is not None else f"{stair.name} - STAIRCASE PLAN"
     plan_cx = ox + total_l / 2.0
-    plan_y = oy - (500.0 if is_metric else 20.0)
+    plan_y = oy - (750.0 if is_metric else 30.0)
     draw_text(
         target,
         plan_title_str,

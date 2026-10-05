@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import struct_draw as sd
-from struct_draw.core.data import CombinedFootingData, Rebar, Stirrup
+from struct_draw.core.data import CombinedFootingData, Rebar, ScheduleRow, Stirrup
 
 
 def main() -> None:
@@ -47,6 +47,13 @@ def main() -> None:
             Rebar(mark="C1", size="16φ", quantity=4, length_in=3000.0),
         ),
         column_stirrups=Stirrup(size="8φ", spacing_in=100.0, legs=2),
+        schedule=(
+            ScheduleRow(mark="CF1-B1", size="12φ", quantity=11, length_in=3700.0, remarks="Bottom Long. Mat"),
+            ScheduleRow(mark="CF1-B2", size="12φ", quantity=23, length_in=1800.0, remarks="Bottom Trans. Mat"),
+            ScheduleRow(mark="CF1-T1", size="12φ", quantity=11, length_in=3700.0, remarks="Top Long. Mat"),
+            ScheduleRow(mark="CF1-D1", size="16φ", quantity=8, length_in=3000.0, remarks="Col 1 & 2 Dowels"),
+            ScheduleRow(mark="CF1-L1", size="8φ", quantity=40, length_in=1280.0, remarks="Column Ties @ 100mm"),
+        ),
     )
 
     out_dir = Path(__file__).resolve().parent / "output"
@@ -86,6 +93,13 @@ def main() -> None:
             Rebar(mark="CB1", size="#7", quantity=4, length_in=120.0),
         ),
         column_stirrups=Stirrup(size="#3", spacing_in=6.0, legs=2),
+        schedule=(
+            ScheduleRow(mark="CF2-B1", size="#5", quantity=11, length_in=152.0, remarks="Bottom Long. Mat"),
+            ScheduleRow(mark="CF2-B2", size="#5", quantity=24, length_in=72.0, remarks="Bottom Trans. Mat"),
+            ScheduleRow(mark="CF2-T1", size="#5", quantity=11, length_in=152.0, remarks="Top Long. Mat"),
+            ScheduleRow(mark="CF2-D1", size="#7", quantity=8, length_in=120.0, remarks="Col 1 & 2 Dowels"),
+            ScheduleRow(mark="CF2-T2", size="#3", quantity=30, length_in=52.0, remarks="Column Ties @ 6\" c/c"),
+        ),
     )
 
     imp_out_path = out_dir / "output_combined_footing_imperial.dxf"

@@ -40,6 +40,15 @@ from struct_draw.core.data import (
     StaircaseData,
     Stirrup,
 )
+from struct_draw.core.units import (
+    DrawingScale,
+    DrawingUnit,
+    SCALE_1_2_IN,
+    SCALE_1_4_IN,
+    SCALE_1_IN,
+    SCALE_1_8_IN,
+)
+
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +161,8 @@ def from_beam_result(result: Any) -> BeamData:
         stirrups=stirrups,
         schedule=tuple(schedule),
         length_in=float(_safe_getattr(design, "length", 240.0) or 240.0),
+        scale=SCALE_1_2_IN,
+        unit=DrawingUnit.IN,
     )
 
 
@@ -176,6 +187,8 @@ def from_footing_result(result: Any) -> FootingData:
         column_bars=tuple(_rebar_from(b) for b in (_safe_getattr(detailing, "column_bars", []) or ())),
         column_stirrups=_stirrup_from(_safe_getattr(detailing, "column_stirrup", None) or design),
         development_length_in=float(_safe_getattr(design, "Ld", _safe_getattr(design, "development_length", 24.0)) or 24.0),
+        scale=SCALE_1_2_IN,
+        unit=DrawingUnit.IN,
     )
 
 
@@ -195,6 +208,8 @@ def from_column_result(result: Any) -> ColumnData:
         schedule=tuple(
             _schedule_from(row) for row in (_safe_getattr(detailing, "schedule_rows", []) or ())
         ),
+        scale=SCALE_1_4_IN,
+        unit=DrawingUnit.IN,
     )
 
 
@@ -209,6 +224,8 @@ def from_staircase_result(result: Any) -> StaircaseData:
         tread_depth_in=float(_safe_getattr(design, "tread_depth", 11.0) or 11.0),
         slab_thickness_in=float(_safe_getattr(design, "slab_thickness", 6.0) or 6.0),
         landings=int(_safe_getattr(design, "landings", 1) or 1),
+        scale=SCALE_1_IN,
+        unit=DrawingUnit.IN,
     )
 
 
@@ -226,6 +243,8 @@ def from_slab_result(result: Any) -> SlabData:
         cover_in=float(_safe_getattr(design, "cover", 0.75) or 0.75),
         top_bar=_rebar_from(top_bar_obj) if top_bar_obj is not None else None,
         bottom_bar=_rebar_from(bot_bar_obj) if bot_bar_obj is not None else None,
+        scale=SCALE_1_8_IN,
+        unit=DrawingUnit.IN,
     )
 
 

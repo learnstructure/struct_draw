@@ -124,6 +124,22 @@ def section_view(
     else:
         is_metric = L >= 300.0
 
+    if is_metric:
+        if cw < 50.0:
+            cw = cw * 25.4
+        if cd < 50.0:
+            cd = cd * 25.4
+        if ledge < 10.0:
+            ledge = ledge * 25.4
+        if pcc_thick < 10.0 and pcc_thick > 0:
+            pcc_thick = pcc_thick * 25.4
+        if soling_thick < 10.0 and soling_thick > 0:
+            soling_thick = soling_thick * 25.4
+        if Ld < 50.0:
+            Ld = Ld * 25.4
+        if ch < 150.0:
+            ch = ch * 25.4
+
     # Beam dimensions
     pb_w = footing.plinth_beam_width_in or (230.0 if is_metric else 9.0)
     pb_h = footing.plinth_beam_depth_in or (350.0 if is_metric else 14.0)
@@ -502,6 +518,11 @@ def section_view(
         layer="Text",
     )
 
+    min_x = min(-cw / 2.0 - level_ext, -L / 2.0 - 700.0 * s) + ox
+    max_x = max(L / 2.0 + 400.0 * s, cw / 2.0 + 2000.0 * s) + ox
+    min_y = min(-pcc_thick - soling_thick, -650.0 * s - hdr_txt_sz * 1.5) + oy
+    max_y = col_y_top + 200.0 * s
+
     return {
         "origin": (ox, oy),
         "column_top": col_y_top,
@@ -509,6 +530,7 @@ def section_view(
         "plinth_level": pl_y,
         "footing_length": L,
         "footing_width": B,
+        "bounding_box": (min_x, min_y, max_x, max_y),
     }
 
 
@@ -539,6 +561,14 @@ def plan_view(
         is_metric = DrawingUnit.from_str(unit).is_metric if isinstance(unit, str) else getattr(unit, "is_metric", True)
     else:
         is_metric = L >= 300.0
+
+    if is_metric:
+        if cw < 50.0:
+            cw = cw * 25.4
+        if cd < 50.0:
+            cd = cd * 25.4
+        if ledge < 10.0:
+            ledge = ledge * 25.4
 
     # Scale helpers
     if scale is not None or unit is not None:
@@ -701,7 +731,15 @@ def plan_view(
         layer="Text",
     )
 
-    return {"plan_origin": (pcx, pcy)}
+    min_x = foot_1[0] - max(cen_ext + 150.0 * s, 300.0 * s)
+    max_x = foot_2[0] + max(cen_ext + 150.0 * s, 350.0 * s)
+    min_y = foot_1[1] - 450.0 * s - txt_sz * 1.5
+    max_y = foot_2[1] + max(cen_ext, 250.0 * s)
+
+    return {
+        "plan_origin": (pcx, pcy),
+        "bounding_box": (min_x, min_y, max_x, max_y),
+    }
 
 
 __all__ = ["section_view", "plan_view", "bar_off_y"]

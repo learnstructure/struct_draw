@@ -57,6 +57,7 @@ class StirrupGeometry:
     is_circular: bool = False
     circular_diameter: float = 0.0
     bend_radius: float | None = None
+    corner_bar_diameter: float | None = None
     double_line: bool = True
     layer: str = "STIRRUP"
 
@@ -94,6 +95,17 @@ class StirrupGeometry:
         x0, y0 = self.origin
         w, d = self.width, self.depth
         t = max(0.01, self.diameter)
+        is_metric = self.width >= 100.0 or self.depth >= 100.0 or self.diameter >= 5.0
+
+        # Corner longitudinal rebar radius determination
+        if self.corner_bar_diameter is not None and self.corner_bar_diameter > 0:
+            r_b = self.corner_bar_diameter / 2.0
+        elif self.bend_radius is not None and self.bend_radius > 0:
+            r_b = self.bend_radius
+        else:
+            r_b = max(0.8 * t, 8.0 if is_metric else 0.3125)
+        # Ensure r_b fits within the cross-section
+        r_b = min(r_b, 0.35 * w, 0.35 * d)
 
         # 1. Outer closed rectangle
         pts_outer = [
@@ -107,68 +119,201 @@ class StirrupGeometry:
         if poly_outer:
             out.append(poly_outer)
 
-        # 2. Inner rectangle (Double Line) if requested
-        if self.double_line and w > 2.0 * t and d > 2.0 * t:
-            pts_inner = [
-                (x0 + t, y0 + t),
-                (x0 + w - t, y0 + t),
-                (x0 + w - t, y0 + d - t),
-                (x0 + t, y0 + d - t),
-                (x0 + t, y0 + t),
-            ]
-            poly_inner = draw_polyline(target, pts_inner, close=True, layer=self.layer)
-            if poly_inner:
-                out.append(poly_inner)
-
-        # 3. Seismic 135° Hooks (Double-line pairs extending inward into core)
+        # 2. Seismic 135° Hooks parameters
         hk_len = self.effective_hook_length
         cos45 = math.cos(math.radians(45.0))
         sin45 = math.sin(math.radians(45.0))
         dx = hk_len * cos45
         dy = hk_len * sin45
+        clr = 0.02 * t
+        sqrt2 = math.sqrt(2.0)
 
-        if self.hook_corner == "top_left":
-            # Hook 1 (from top face turning down-right 135° into core):
-            # Outer line & inner parallel line
-            p1_out_start = (x0 + t * 2.5, y0 + d)
-            p1_out_end = (p1_out_start[0] + dx, p1_out_start[1] - dy)
-            l1_out = draw_line(target, p1_out_start, p1_out_end, layer=self.layer)
-            if l1_out:
-                out.append(l1_out)
+        corner = self.hook_corner.lower()
 
-            if self.double_line:
-                p1_in_start = (x0 + t * 2.5, y0 + d - t)
-                p1_in_end = (p1_in_start[0] + dx, p1_in_start[1] - dy)
-                l1_in = draw_line(target, p1_in_start, p1_in_end, layer=self.layer)
-                if l1_in:
-                    out.append(l1_in)
+        if corner == "top_left":
+            rcx = x0 + t + r_b
+            rcy = y0 + d - t - r_b
+            nx, ny = sin45, cos45
 
-            # Hook 2 (from left face turning down-right 135° into core):
-            p2_out_start = (x0, y0 + d - t * 2.5)
-            p2_out_end = (p2_out_start[0] + dx, p2_out_start[1] - dy)
-            l2_out = draw_line(target, p2_out_start, p2_out_end, layer=self.layer)
-            if l2_out:
-                out.append(l2_out)
+            # Hook 1 (top)
+            X1 = rcx + (sqrt2 - 1.0) * r_b + clr
+            Y1 = y0 + d - t
+            h1_in_start = (X1, Y1)
+            h1_in_end = (X1 + dx, Y1 - dy)
+            h1_out_end = (h1_in_end[0] + t * nx, h1_in_end[1] + t * ny)
+            h1_out_start = (X1 + t * sqrt2, Y1)
 
-            if self.double_line:
-                p2_in_start = (x0 + t, y0 + d - t * 2.5)
-                p2_in_end = (p2_in_start[0] + dx, p2_in_start[1] - dy)
-                l2_in = draw_line(target, p2_in_start, p2_in_end, layer=self.layer)
-                if l2_in:
-                    out.append(l2_in)
+            # Hook 2 (left)
+            X2 = x0 + t
+            Y2 = rcy - (sqrt2 - 1.0) * r_b - clr
+            h2_in_start = (X2, Y2)
+            h2_in_end = (X2 + dx, Y2 - dy)
+            h2_out_end = (h2_in_end[0] - t * nx, h2_in_end[1] - t * ny)
+            h2_out_start = (X2, Y2 - t * sqrt2)
 
-        elif self.hook_corner == "top_right":
-            p1_out_start = (x0 + w - t * 2.5, y0 + d)
-            p1_out_end = (p1_out_start[0] - dx, p1_out_start[1] - dy)
-            l1_out = draw_line(target, p1_out_start, p1_out_end, layer=self.layer)
-            if l1_out:
-                out.append(l1_out)
+            arc_pts = []
+            for i in range(1, 5):
+                deg = -90.0 + i * (90.0 / 5.0)
+                rad = math.radians(deg)
+                arc_pts.append((rcx + (r_b + clr) * math.cos(rad), rcy + (r_b + clr) * math.sin(rad)))
 
-            p2_out_start = (x0 + w, y0 + d - t * 2.5)
-            p2_out_end = (p2_out_start[0] - dx, p2_out_start[1] - dy)
-            l2_out = draw_line(target, p2_out_start, p2_out_end, layer=self.layer)
-            if l2_out:
-                out.append(l2_out)
+            inner_poly = [
+                h1_out_start,
+                (x0 + w - t, y0 + d - t),
+                (x0 + w - t, y0 + t),
+                (x0 + t, y0 + t),
+                h2_out_start,
+                h2_out_end,
+                h2_in_end,
+                h2_in_start,
+            ] + arc_pts + [
+                h1_in_start,
+                h1_in_end,
+                h1_out_end,
+                h1_out_start,
+            ]
+            single_poly = [h2_in_end, h2_in_start, (x0, y0), (x0 + w, y0), (x0 + w, y0 + d), h1_in_start, h1_in_end]
+
+        elif corner == "top_right":
+            rcx = x0 + w - t - r_b
+            rcy = y0 + d - t - r_b
+            nx, ny = -sin45, cos45
+
+            # Hook 1 (top)
+            X1 = rcx - (sqrt2 - 1.0) * r_b - clr
+            Y1 = y0 + d - t
+            h1_in_start = (X1, Y1)
+            h1_in_end = (X1 - dx, Y1 - dy)
+            h1_out_end = (h1_in_end[0] + t * nx, h1_in_end[1] + t * ny)
+            h1_out_start = (X1 - t * sqrt2, Y1)
+
+            # Hook 2 (right)
+            X2 = x0 + w - t
+            Y2 = rcy - (sqrt2 - 1.0) * r_b - clr
+            h2_in_start = (X2, Y2)
+            h2_in_end = (X2 - dx, Y2 - dy)
+            h2_out_end = (h2_in_end[0] - t * nx, h2_in_end[1] - t * ny)
+            h2_out_start = (X2, Y2 - t * sqrt2)
+
+            arc_pts = []
+            for i in range(1, 5):
+                deg = -90.0 - i * (90.0 / 5.0)
+                rad = math.radians(deg)
+                arc_pts.append((rcx + (r_b + clr) * math.cos(rad), rcy + (r_b + clr) * math.sin(rad)))
+
+            inner_poly = [
+                h2_out_start,
+                (x0 + w - t, y0 + t),
+                (x0 + t, y0 + t),
+                (x0 + t, y0 + d - t),
+                h1_out_start,
+                h1_out_end,
+                h1_in_end,
+                h1_in_start,
+            ] + arc_pts + [
+                h2_in_start,
+                h2_in_end,
+                h2_out_end,
+                h2_out_start,
+            ]
+            single_poly = [h1_in_end, h1_in_start, (x0, y0 + d), (x0, y0), (x0 + w, y0), h2_in_start, h2_in_end]
+
+        elif corner == "bottom_left":
+            rcx = x0 + t + r_b
+            rcy = y0 + t + r_b
+            nx, ny = sin45, -cos45
+
+            # Hook 1 (bottom)
+            X1 = rcx + (sqrt2 - 1.0) * r_b + clr
+            Y1 = y0 + t
+            h1_in_start = (X1, Y1)
+            h1_in_end = (X1 + dx, Y1 + dy)
+            h1_out_end = (h1_in_end[0] + t * nx, h1_in_end[1] + t * ny)
+            h1_out_start = (X1 + t * sqrt2, Y1)
+
+            # Hook 2 (left)
+            X2 = x0 + t
+            Y2 = rcy + (sqrt2 - 1.0) * r_b + clr
+            h2_in_start = (X2, Y2)
+            h2_in_end = (X2 + dx, Y2 + dy)
+            h2_out_end = (h2_in_end[0] - t * nx, h2_in_end[1] - t * ny)
+            h2_out_start = (X2, Y2 + t * sqrt2)
+
+            arc_pts = []
+            for i in range(1, 5):
+                deg = 90.0 - i * (90.0 / 5.0)
+                rad = math.radians(deg)
+                arc_pts.append((rcx + (r_b + clr) * math.cos(rad), rcy + (r_b + clr) * math.sin(rad)))
+
+            inner_poly = [
+                h2_out_start,
+                (x0 + t, y0 + d - t),
+                (x0 + w - t, y0 + d - t),
+                (x0 + w - t, y0 + t),
+                h1_out_start,
+                h1_out_end,
+                h1_in_end,
+                h1_in_start,
+            ] + arc_pts + [
+                h2_in_start,
+                h2_in_end,
+                h2_out_end,
+                h2_out_start,
+            ]
+            single_poly = [h1_in_end, h1_in_start, (x0 + w, y0), (x0 + w, y0 + d), (x0, y0 + d), h2_in_start, h2_in_end]
+
+        else:  # bottom_right
+            rcx = x0 + w - t - r_b
+            rcy = y0 + t + r_b
+            nx, ny = -sin45, -cos45
+
+            # Hook 1 (bottom)
+            X1 = rcx - (sqrt2 - 1.0) * r_b - clr
+            Y1 = y0 + t
+            h1_in_start = (X1, Y1)
+            h1_in_end = (X1 - dx, Y1 + dy)
+            h1_out_end = (h1_in_end[0] + t * nx, h1_in_end[1] + t * ny)
+            h1_out_start = (X1 - t * sqrt2, Y1)
+
+            # Hook 2 (right)
+            X2 = x0 + w - t
+            Y2 = rcy + (sqrt2 - 1.0) * r_b + clr
+            h2_in_start = (X2, Y2)
+            h2_in_end = (X2 - dx, Y2 + dy)
+            h2_out_end = (h2_in_end[0] - t * nx, h2_in_end[1] - t * ny)
+            h2_out_start = (X2, Y2 + t * sqrt2)
+
+            arc_pts = []
+            for i in range(1, 5):
+                deg = 90.0 + i * (90.0 / 5.0)
+                rad = math.radians(deg)
+                arc_pts.append((rcx + (r_b + clr) * math.cos(rad), rcy + (r_b + clr) * math.sin(rad)))
+
+            inner_poly = [
+                h1_out_start,
+                (x0 + t, y0 + t),
+                (x0 + t, y0 + d - t),
+                (x0 + w - t, y0 + d - t),
+                h2_out_start,
+                h2_out_end,
+                h2_in_end,
+                h2_in_start,
+            ] + arc_pts + [
+                h1_in_start,
+                h1_in_end,
+                h1_out_end,
+                h1_out_start,
+            ]
+            single_poly = [h2_in_end, h2_in_start, (x0 + w, y0 + d), (x0, y0 + d), (x0, y0), h1_in_start, h1_in_end]
+
+        if self.double_line and w > 2.0 * t and d > 2.0 * t:
+            p_in = draw_polyline(target, inner_poly, close=True, layer=self.layer)
+            if p_in:
+                out.append(p_in)
+        else:
+            p_s = draw_polyline(target, single_poly, close=False, layer=self.layer)
+            if p_s:
+                out.append(p_s)
 
         return out
 
@@ -182,6 +327,8 @@ def draw_double_line_stirrup(
     tie_diameter: float = 0.375,
     hook_length: float | None = None,
     hook_corner: str = "top_left",
+    corner_bar_diameter: float | None = None,
+    bend_radius: float | None = None,
     layer: str = "STIRRUP",
 ) -> list[Any]:
     """Helper function to draw a double-line stirrup with 135° seismic hooks."""
@@ -192,6 +339,8 @@ def draw_double_line_stirrup(
         origin=origin,
         hook_length=hook_length,
         hook_corner=hook_corner,
+        corner_bar_diameter=corner_bar_diameter,
+        bend_radius=bend_radius,
         double_line=True,
         layer=layer,
     )

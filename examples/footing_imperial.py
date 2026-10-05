@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import struct_draw as sd
-from struct_draw.core.data import FootingData, Rebar, Stirrup
+from struct_draw.core.data import FootingData, Rebar, ScheduleRow, Stirrup
 
 
 def main() -> None:
@@ -37,6 +37,12 @@ def main() -> None:
             Rebar(mark="CB1", size="#7", quantity=4, length_in=120.0),
         ),
         column_stirrups=Stirrup(size="#3", spacing_in=6.0, legs=2),
+        schedule=(
+            ScheduleRow(mark="F1-B1", size="#5", quantity=12, length_in=78.0, remarks="Bottom X-Dir"),
+            ScheduleRow(mark="F1-B2", size="#5", quantity=12, length_in=78.0, remarks="Bottom Y-Dir"),
+            ScheduleRow(mark="F1-CB1", size="#7", quantity=4, length_in=120.0, remarks="Column Dowels"),
+            ScheduleRow(mark="F1-T1", size="#3", quantity=20, length_in=60.0, remarks="Column Ties @ 6\" c/c"),
+        ),
     )
 
     out_dir = Path(__file__).resolve().parent / "output"

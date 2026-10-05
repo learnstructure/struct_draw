@@ -48,6 +48,12 @@ def make_fake_aci318_footing_result() -> tuple[SimpleNamespace, SimpleNamespace]
             SimpleNamespace(mark="CB1", size="#8", quantity=4, length=120.0),
         ),
         column_stirrup=SimpleNamespace(size="#4", spacing=6.0, legs=2),
+        schedule_rows=(
+            SimpleNamespace(mark="F3-B1", size="#6", quantity=14, length=86.0, remarks="Bottom X-Dir"),
+            SimpleNamespace(mark="F3-B2", size="#6", quantity=14, length=86.0, remarks="Bottom Y-Dir"),
+            SimpleNamespace(mark="F3-CB1", size="#8", quantity=4, length=120.0, remarks="Column Starter Dowels"),
+            SimpleNamespace(mark="F3-T1", size="#4", quantity=15, length=56.0, remarks="Column Ties @ 6\" c/c"),
+        ),
     )
 
     return design, detailing

@@ -124,6 +124,22 @@ def section_view(
         is_metric = L >= 300.0
     s = 1.0 if is_metric else 1.0 / 25.4
 
+    if is_metric:
+        if cw1 < 50.0:
+            cw1 = cw1 * 25.4
+        if cd1 < 50.0:
+            cd1 = cd1 * 25.4
+        if cw2 < 50.0:
+            cw2 = cw2 * 25.4
+        if cd2 < 50.0:
+            cd2 = cd2 * 25.4
+        if pcc_thick < 10.0 and pcc_thick > 0:
+            pcc_thick = pcc_thick * 25.4
+        if soling_thick < 10.0 and soling_thick > 0:
+            soling_thick = soling_thick * 25.4
+        if Ld < 50.0:
+            Ld = Ld * 25.4
+
     if scale is not None or unit is not None:
         from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_25, SCALE_1_IN
         from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
@@ -524,21 +540,30 @@ def section_view(
         layer="Dimension",
     )
 
-    # View title
+    # View title (placed below all dimensions)
     section_title = title or f"Section of {combined_footing.name} along CX{combined_footing.name}"
+    title_x = (x_left + x_right) / 2.0 - len(section_title) * title_sz * 0.28
+    title_y = (dim_y - 300.0 * s) - (250.0 if is_metric else 10.0)
     draw_text(
         target,
         section_title,
-        position=(cx1 - 550.0 * s, oy - 850.0 * s),
+        position=(title_x, title_y),
         height=title_sz,
         layer="Text",
     )
+
+    level_ext = 1400.0 if is_metric else 50.0
+    min_x = min(x_left - 450.0 * s, cx1 - cw1 / 2.0 - level_ext)
+    max_x = max(x_right + 450.0 * s, cx2 + cw2 / 2.0 + 1800.0 * s)
+    min_y = title_y - title_sz * 1.5
+    max_y = pl_y + 1400.0 * s
 
     return {
         "view": "section",
         "length": L,
         "width": width,
         "thickness": thick,
+        "bounding_box": (min_x, min_y, max_x, max_y),
     }
 
 
@@ -573,6 +598,16 @@ def plan_view(
     else:
         is_metric = L >= 300.0
     s = 1.0 if is_metric else 1.0 / 25.4
+
+    if is_metric:
+        if cw1 < 50.0:
+            cw1 = cw1 * 25.4
+        if cd1 < 50.0:
+            cd1 = cd1 * 25.4
+        if cw2 < 50.0:
+            cw2 = cw2 * 25.4
+        if cd2 < 50.0:
+            cd2 = cd2 * 25.4
 
     if scale is not None or unit is not None:
         from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_25, SCALE_1_IN
@@ -769,10 +804,16 @@ def plan_view(
         layer="Text",
     )
 
+    min_x = x_left - 450.0 * s
+    max_x = x_right + 300.0 * s
+    min_y = y_bot - 650.0 * s - txt_sz * 1.5
+    max_y = y_top + 250.0 * s
+
     return {
         "view": "plan",
         "length": L,
         "width": B,
+        "bounding_box": (min_x, min_y, max_x, max_y),
     }
 
 

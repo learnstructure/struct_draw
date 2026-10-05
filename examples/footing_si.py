@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import struct_draw as sd
-from struct_draw.core.data import FootingData, Rebar, Stirrup
+from struct_draw.core.data import FootingData, Rebar, ScheduleRow, Stirrup
 
 
 def main() -> None:
@@ -37,6 +37,12 @@ def main() -> None:
             Rebar(mark="C1", size="16φ", quantity=4, length_in=3000.0),
         ),
         column_stirrups=Stirrup(size="8φ", spacing_in=100.0, legs=2),
+        schedule=(
+            ScheduleRow(mark="F2-1", size="12φ", quantity=11, length_in=1650.0, remarks="Bottom mesh X-dir"),
+            ScheduleRow(mark="F2-2", size="12φ", quantity=11, length_in=1650.0, remarks="Bottom mesh Y-dir"),
+            ScheduleRow(mark="F2-C1", size="16φ", quantity=4, length_in=3000.0, remarks="Column starter dowels"),
+            ScheduleRow(mark="F2-T1", size="8φ", quantity=21, length_in=1280.0, remarks="Column ties @ 100mm c/c"),
+        ),
         scale=sd.SCALE_1_25,     # 1:25 scale for footing detailing
         unit=sd.DrawingUnit.MM,  # Target modelspace units in millimeters
     )

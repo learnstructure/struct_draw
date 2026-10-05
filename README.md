@@ -12,9 +12,9 @@
 - **Comprehensive Structural Element Library**:
   - **General Arrangement (GA) Framing Plans & Elevations**: Complete building floor framing plans, frame elevations along grid lines, and roof trusses directly from a `StructuralModel` or `Project`, showing columns, beams, braces, grid bubbles, story levels, bay dimensions, and member marks without requiring prior rebar design.
   - **Spread / Isolated Footings**: Plan and section views, sloped/stepped footing geometry, column dowels, hook bends, distribution mats, GL (Ground Level) / PL (Plinth Level) markers, and grid axes.
-  - **Combined Footings**: Multi-column support, top & bottom longitudinal/transverse rebar mats, column starter dowels, dimensioning, and schedule tables.
+  - **Combined Footings**: Multi-column support, top & bottom longitudinal/transverse rebar mats, column starter dowels, dimensioning with clear vertical hierarchy (span dimensions, overall length, and section title neatly placed below all dimensions), and schedule tables.
   - **Staircases**: Waist-slab staircases featuring flight elevations, treads & risers, support beams, scissor/crank rebar at landing junctions, top & bottom extra support bars, distribution rebar, step nosing bars, binders, and plan view UP walklines.
-  - **Beams & Columns**: Elevation and section reinforcement views, stirrups, legs, development length $L_d$, and schedule tables.
+  - **Beams & Columns**: Elevation and section reinforcement views, double-line closed stirrups with professional 135° seismic hooks tangent to corner longitudinal bars (with perpendicular end-caps and continuous inner contour), development length $L_d$, and schedule tables.
   - **Slabs**: One-way and two-way slab sectional reinforcement details.
 - **Design Framework Adapters**: Seamlessly translates design results from structural design tools (e.g., `aci318`) into drawing data models.
 
@@ -65,11 +65,14 @@ from struct_draw.core.units import (
     DrawingUnit,
     SCALE_1_100,  # 1:100 (Framing Plans)
     SCALE_1_50,   # 1:50 (Elevations, sections)
+    SCALE_1_30,   # 1:30 (Beam cross-sections)
     SCALE_1_25,   # 1:25 (Reinforcement detailing)
+    SCALE_1_24,   # 1:24 / 1/2" = 1'-0" (Imperial beam cross-sections)
     SCALE_1_20,   # 1:20 (Member cross-sections)
     SCALE_1_10,   # 1:10 (Connection details)
     SCALE_1_8_IN, # 1/8" = 1'-0" (Imperial plans)
     SCALE_1_4_IN, # 1/4" = 1'-0" (Imperial elevations)
+    SCALE_1_2_IN, # 1/2" = 1'-0" (Imperial details / footings)
     SCALE_1_IN,   # 1" = 1'-0" (Imperial details)
 )
 
@@ -90,7 +93,8 @@ When `scale` is not explicitly specified, `struct_draw` automatically applies th
 | **Footings (Spread / Combined)**| `SCALE_1_25` ($1:25$) | `SCALE_1_2_IN` ($1/2"=1'-0"$) | Footing plan and section views |
 | **Staircases** | `SCALE_1_25` ($1:25$) | `SCALE_1_IN` ($1"=1'-0"$) | Flight elevation, landing joints, steps |
 | **Slab Plan** | `SCALE_1_50` ($1:50$) | `SCALE_1_4_IN` ($1/4"=1'-0"$) | Slab panel layouts |
-| **Member Cross-Sections** | `SCALE_1_20` ($1:20$) | `SCALE_1_IN` ($1"=1'-0"$) | Beam, column, and slab cross-sections |
+| **Beam Cross-Sections** | `SCALE_1_30` ($1:30$) | `SCALE_1_24` ($1/2"=1'-0"$) | Beam cross-sections with rebar callouts |
+| **Member Cross-Sections** | `SCALE_1_20` ($1:20$) | `SCALE_1_IN` ($1"=1'-0"$) | Column, wall, and detail cross-sections |
 
 You can query or inspect defaults programmatically using:
 ```python
@@ -98,6 +102,7 @@ from struct_draw import default_scale_for_view
 
 plan_scale = default_scale_for_view("plan", is_metric=True)       # DrawingScale(1:100)
 elev_scale = default_scale_for_view("elevation", is_metric=True)  # DrawingScale(1:50)
+beam_scale = default_scale_for_view("beam", is_metric=True)       # DrawingScale(1:30)
 detail_scale = default_scale_for_view("detail", is_metric=True)   # DrawingScale(1:20)
 ```
 
@@ -144,6 +149,8 @@ draw_general_frame_from_core(
     output_path="framing_combined_sheet.dxf",
 )
 ```
+
+- **Synchronized Member Mark Hierarchy**: Member marks (`B2`, `C1`, `C3`) are systematically synchronized across framing plans, frame elevations, and detailing section cuts based on element attributes or element IDs to ensure 100% drawing consistency.
 
 ---
 
@@ -210,6 +217,53 @@ footing_us = FootingData(
 sd.save_dxf(footing_us, "footing_drawing_us.dxf")
 ```
 
+---
+
+## Bar Bending Schedule (BBS) Tables
+
+`struct_draw` includes built-in support for generating production-grade **Bar Bending Schedules (BBS)** complying with ACI and international detailing conventions:
+
+- **Multi-Tier Header Layout**: Standard columns `MARK | BAR SIZE | QTY (NO.) | LENGTH (ft-in or mm) | SHAPE (TYPE) | UNIT WT | TOTAL WT | REMARKS`.
+- **Automatic Unit Weight Calculations**: Built-in weight tables for standard ASTM A615 imperial sizes (`#3` to `#18` in $lbs/ft$) and metric bar diameters per IS 1786 / EN 10080 ($kg/m$ via $d^2 / 162.2$).
+- **Grand Total Weight Summary**: Computes total estimated reinforcement tonnage/weight and adds a summary row.
+- **Dynamic Formatting & Clean Centering**: Dynamic column width calculation prevents text overlap; supports `align="center"`, `align="left"`, and `align="right"` for seamless alignment under foundation pads and column views.
+- **Direct Element Integration**: Simply attach a `schedule` tuple of `ScheduleRow` objects to `FootingData`, `CombinedFootingData`, or `ColumnData`:
+
+```python
+from struct_draw.core.data import FootingData, ScheduleRow, Rebar, Stirrup
+import struct_draw as sd
+
+footing = FootingData.from_metric(
+    name="F1",
+    length=1800.0,
+    width=1800.0,
+    schedule=(
+        ScheduleRow(mark="F1-B1", size="12φ", quantity=12, length_in=1850.0, remarks="Bottom X-Dir Mat"),
+        ScheduleRow(mark="F1-B2", size="12φ", quantity=12, length_in=1850.0, remarks="Bottom Y-Dir Mat"),
+        ScheduleRow(mark="F1-D1", size="16φ", quantity=4, length_in=3000.0, remarks="Column Starter Dowels"),
+        ScheduleRow(mark="F1-T1", size="8φ", quantity=20, length_in=1280.0, remarks="Column Ties @ 100mm c/c"),
+    ),
+)
+
+# Renders Plan, Section, and centered Bar Bending Schedule table
+sd.save_dxf(footing, "footing_with_schedule.dxf")
+```
+
+Or render a standalone schedule table sheet using `ScheduleTableData`:
+
+```python
+from struct_draw.core.data import ScheduleTableData, ScheduleRow
+
+schedule_sheet = ScheduleTableData(
+    title="PROJECT FOUNDATION REBAR SCHEDULE",
+    rows=[
+        ScheduleRow(mark="F1-1", size="#6", quantity=24, length_in=90.0, remarks="Footing F1 Bottom Mat"),
+        ScheduleRow(mark="CF1-1", size="#7", quantity=16, length_in=180.0, remarks="Combined CF1 Longitudinal"),
+    ],
+    unit="in",
+)
+sd.save_dxf(schedule_sheet, "schedule_table_sheet.dxf")
+```
 
 ---
 
@@ -281,7 +335,12 @@ output = draw_from_core(project)
 output["drawing"].saveas("portal_frame_detailing.dxf")
 ```
 
-A runnable example lives at `struct_agent/examples/end_to_end_ecosystem_pipeline.py`.
+A runnable example lives at `struct_agent/examples/end_to_end_ecosystem_pipeline.py` and `struct_agent/examples/demo_pipeline.py`.
+
+### Automated Layout & Framing Integration
+When generating full-sheet drawings containing both structural framing (plans and elevations) and member detailing cuts:
+- **Unified Detailing Datum**: Computes a synchronized `detailing_baseline_y` below framing views with proper vertical headroom so tall elements (such as full-story columns with seismic confinement zones, lap splices, and upper/lower joint stubs) align cleanly with beam sections without vertical overlap or collision with framing views.
+- **Dynamic Geometric Inference**: Automatically derives member clear lengths and section heights across `StructuralModel.nodes` (supporting both dict and list node collections), element definitions, and analysis/design cases in both SI Metric and Imperial US Customary units.
 
 ---
 

@@ -77,7 +77,10 @@ class DrawingUnit(str, Enum):
         """Resolve a DrawingUnit from string or DrawingUnit instance."""
         if isinstance(s, cls):
             return s
-        clean = str(s).strip().lower()
+        raw_val = getattr(s, "value", str(s))
+        clean = str(raw_val).strip().lower()
+        if "." in clean:
+            clean = clean.split(".")[-1]
         if clean in ("mm", "millimeter", "millimeters"):
             return cls.MM
         elif clean in ("cm", "centimeter", "centimeters"):
@@ -93,6 +96,7 @@ class DrawingUnit(str, Enum):
         elif "imperial" in clean or "customary" in clean or "us" in clean:
             return cls.IN
         return cls.MM
+
 
 
 @dataclass(frozen=True)
@@ -159,9 +163,11 @@ class DrawingScale:
             return cls(ratio=48.0, name=s, is_metric=False)
 
     @classmethod
-    def from_str(cls, s: str, is_metric: Optional[bool] = None) -> DrawingScale:
+    def from_str(cls, s: Union[str, DrawingScale], is_metric: Optional[bool] = None) -> DrawingScale:
         """Parse standard scale strings like '1:50', '1:20', '1/4\"=1'-0\"'."""
-        clean = s.strip()
+        if isinstance(s, cls):
+            return s
+        clean = str(s).strip()
         if clean.lower() == "full" or clean == "1:1":
             return cls(ratio=1.0, name="1:1", is_metric=True if is_metric is None else is_metric)
         if ":" in clean and not ("=" in clean or '"' in clean):
@@ -173,7 +179,7 @@ class DrawingScale:
             return cls.imperial(clean)
         try:
             r = float(clean)
-            metric = is_metric if is_metric is not None else (r in (10, 20, 25, 50, 100, 200, 500))
+            metric = is_metric if is_metric is not None else (r in (10, 20, 25, 30, 50, 100, 200, 500))
             return cls(ratio=r, name=f"1:{int(r)}" if r.is_integer() else f"1:{r}", is_metric=metric)
         except ValueError:
             return cls.metric(50.0, "1:50") if (is_metric is None or is_metric) else cls.imperial(48.0, '1/4" = 1\'-0"')
@@ -182,6 +188,7 @@ class DrawingScale:
 # Standard View Scale Presets
 SCALE_1_100 = DrawingScale.metric(100.0, "1:100")
 SCALE_1_50 = DrawingScale.metric(50.0, "1:50")
+SCALE_1_30 = DrawingScale.metric(30.0, "1:30")
 SCALE_1_25 = DrawingScale.metric(25.0, "1:25")
 SCALE_1_20 = DrawingScale.metric(20.0, "1:20")
 SCALE_1_10 = DrawingScale.metric(10.0, "1:10")
@@ -189,9 +196,11 @@ SCALE_1_10 = DrawingScale.metric(10.0, "1:10")
 SCALE_1_8_IN = DrawingScale.imperial('1/8" = 1\'-0"')   # 1:96
 SCALE_1_4_IN = DrawingScale.imperial('1/4" = 1\'-0"')   # 1:48
 SCALE_1_2_IN = DrawingScale.imperial('1/2" = 1\'-0"')   # 1:24
+SCALE_1_24 = SCALE_1_2_IN                               # 1:24 alias
 SCALE_3_4_IN = DrawingScale.imperial('3/4" = 1\'-0"')   # 1:16
 SCALE_1_IN = DrawingScale.imperial('1" = 1\'-0"')       # 1:12
 SCALE_3_IN = DrawingScale.imperial('3" = 1\'-0"')       # 1:4
+
 
 
 def drawing_unit_from_core(
@@ -271,8 +280,8 @@ def default_scale_for_view(
         The standard default drawing scale for the view:
         - Plan: 1:100 (metric) or 1/8"=1'-0" (imperial)
         - Elevation: 1:50 (metric) or 1/4"=1'-0" (imperial)
-        - Profile / Footing / Staircase: 1:25 (metric) or 1/2"=1'-0" / 1"=1'-0" (imperial)
-        - Cross-Section / Detail: 1:20 (metric) or 1"=1'-0" (imperial)
+        - Profile / Footing / Staircase: 1:25 (metric) or 1/2"=1'-0" (imperial)
+        - Cross-Section / Detail: 1:30 or 1:20 (metric) or 1/2"=1'-0" (1:24 imperial)
     """
     vt = (view_type or "").lower().strip()
     if is_metric:
@@ -284,6 +293,8 @@ def default_scale_for_view(
             return SCALE_1_25
         elif "slab" in vt and "plan" in vt:
             return SCALE_1_50
+        elif "beam" in vt:
+            return SCALE_1_30
         elif "sec" in vt or "detail" in vt:
             return SCALE_1_20
         return SCALE_1_50
@@ -294,6 +305,11 @@ def default_scale_for_view(
             return SCALE_1_4_IN
         elif "profile" in vt or "footing" in vt:
             return SCALE_1_2_IN
-        elif "stair" in vt or "sec" in vt or "detail" in vt:
+        elif "stair" in vt:
+            return SCALE_1_IN
+        elif "beam" in vt:
+            return SCALE_1_2_IN  # 1/2" = 1'-0" (1:24)
+        elif "sec" in vt or "detail" in vt:
             return SCALE_1_IN
         return SCALE_1_4_IN
+

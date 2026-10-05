@@ -125,6 +125,7 @@ def draw_text(
     rotation: float = 0.0,
     style: str | None = None,
     layer: str = "TEXT",
+    align: Any | None = None,
 ) -> Any:
     """Draw a single-line TEXT entity or MTEXT entity if text contains line breaks."""
     if not text:
@@ -136,7 +137,19 @@ def draw_text(
     attribs: dict[str, Any] = {"layer": layer, "height": height, "rotation": rotation}
     if style:
         attribs["style"] = style
-    return target.add_text(text, dxfattribs={"insert": position, **attribs})
+    entity = target.add_text(text, dxfattribs={"insert": position, **attribs})
+    if align is not None and hasattr(entity, "set_placement"):
+        try:
+            from ezdxf.enums import TextEntityAlignment
+            if isinstance(align, str):
+                align_enum = getattr(TextEntityAlignment, align.upper(), None)
+                if align_enum is not None:
+                    entity.set_placement(position, align=align_enum)
+            else:
+                entity.set_placement(position, align=align)
+        except Exception:
+            pass
+    return entity
 
 
 def draw_mtext(
@@ -328,7 +341,6 @@ def draw_leader(
     layer: str = "LEADER",
 ) -> Any:
     """Draw an AutoCAD MULTILEADER (mLeader) entity with integrated multi-line MTEXT annotation,
-
     or an AutoCAD LEADER attached with MTEXT.
     """
     if len(vertices) < 2:
@@ -336,73 +348,99 @@ def draw_leader(
 
     clean_t = text.replace("φ", "mm dia").replace("Φ", "mm dia").replace("ϕ", "mm dia") if text else ""
 
+    p0 = vertices[0]
+    p1 = vertices[1]
+
+    # Determine horizontal shelf parameters
+    if len(vertices) >= 3:
+        p_shelf = vertices[-1]
+        landing_len = abs(p_shelf[0] - p1[0])
+        if landing_len < 1e-3:
+            landing_len = text_height * 2.5
+        is_right = (p_shelf[0] >= p1[0])
+    else:
+        is_right = (p1[0] >= p0[0])
+        landing_len = text_height * 2.5
+
+    actual_arrow_size = arrow_size
+    if actual_arrow_size <= 0.20 and text_height > 1.0:
+        actual_arrow_size = text_height * 0.75
+    elif actual_arrow_size <= 0.0:
+        actual_arrow_size = text_height * 0.75
+
     # 1. Try AutoCAD native MULTILEADER (mLeader) via ezdxf MultiLeaderBuilder
     if clean_t and hasattr(target, "add_multileader_mtext"):
         try:
             from ezdxf.math import Vec2
             from ezdxf.render import mleader
 
-            target_pt = vertices[0]
-            text_pt = vertices[-1]
+            target_pt = Vec2(p0)
+            elbow_pt = Vec2(p1)
+
+            side = mleader.ConnectionSide.left if is_right else mleader.ConnectionSide.right
+            align = mleader.TextAlignment.left if is_right else mleader.TextAlignment.right
+            conn_type = mleader.HorizontalConnection.middle_of_top_line
 
             ml_builder = target.add_multileader_mtext("Standard")
             if hasattr(ml_builder, "multileader") and hasattr(ml_builder.multileader, "dxf"):
                 ml_builder.multileader.dxf.layer = layer
-
-            if text_pt[0] >= target_pt[0]:
-                side = mleader.ConnectionSide.left
-                align = mleader.TextAlignment.left
-            else:
-                side = mleader.ConnectionSide.right
-                align = mleader.TextAlignment.right
 
             ml_builder.set_content(
                 clean_t,
                 char_height=text_height,
                 alignment=align,
             )
-            if arrow_size > 0:
+            landing_gap = max(text_height * 0.15, 2.0 if text_height > 10.0 else 0.05)
+            ml_builder.set_connection_properties(dogleg_length=landing_len, landing_gap=landing_gap)
+            if actual_arrow_size > 0:
                 try:
-                    ml_builder.set_arrow_properties(size=arrow_size)
+                    ml_builder.set_arrow_properties(size=actual_arrow_size)
                 except Exception:
                     pass
+            ml_builder.set_connection_types(left=conn_type, right=conn_type)
 
-            if len(vertices) > 2:
-                line_verts = [Vec2(v) for v in vertices[:-1]]
-            else:
-                line_verts = [Vec2(vertices[0])]
+            cbox = ml_builder._build_connection_box()
+            move_y = -cbox.left.y if is_right else -cbox.right.y
+            dogleg_dir = mleader.DOGLEG_DIRECTIONS[side]
+            last_seg = dogleg_dir * (landing_len + landing_gap)
+            insert_pt = elbow_pt + last_seg + Vec2(0.0, move_y)
 
-            ml_builder.add_leader_line(side, line_verts)
-            return ml_builder.build(insert=Vec2(text_pt))
+            ml_builder.add_leader_line(side, [target_pt])
+            ml_builder.build(insert_pt)
+            return ml_builder.multileader
         except Exception:
             pass
 
     # 2. Try AutoCAD LEADER object with attached MTEXT
+    shelf_dx = landing_len if is_right else -landing_len
+    p2 = (p1[0] + shelf_dx, p1[1])
+    full_verts = [p0, p1, p2]
+
     leader = None
     if hasattr(target, "add_leader"):
         try:
-            leader = target.add_leader(vertices=list(vertices), dxfattribs={"layer": layer})
-            if arrow_size and hasattr(leader, "dxf") and hasattr(leader.dxf, "arrow_size"):
+            leader = target.add_leader(vertices=full_verts, dxfattribs={"layer": layer})
+            if actual_arrow_size and hasattr(leader, "dxf") and hasattr(leader.dxf, "arrow_size"):
                 try:
-                    leader.dxf.arrow_size = arrow_size
+                    leader.dxf.arrow_size = actual_arrow_size
                 except Exception:
                     pass
         except Exception:
-            leader = draw_polyline(target, list(vertices), close=False, layer=layer)
+            leader = draw_polyline(target, full_verts, close=False, layer=layer)
     else:
-        leader = draw_polyline(target, list(vertices), close=False, layer=layer)
+        leader = draw_polyline(target, full_verts, close=False, layer=layer)
 
     # 3. Add single multi-line MTEXT object
     if clean_t:
-        last_pt = vertices[-1]
-        text_gap = text_height * 0.35
-        text_pos = (last_pt[0] + text_gap, last_pt[1] + text_height * 0.25)
+        text_gap = text_height * 0.25
+        text_pos = (p2[0] + text_gap, p2[1]) if is_right else (p2[0] - text_gap, p2[1])
         if hasattr(target, "add_mtext"):
             draw_mtext(target, clean_t, position=text_pos, height=text_height, layer="TEXT")
         else:
             draw_text(target, clean_t, position=text_pos, height=text_height, layer="TEXT")
 
     return leader
+
 
 
 # ---------------------------------------------------------------------------
