@@ -1,7 +1,7 @@
-"""Example 3a — Render a spread footing drawing (Plan + Section) in Imperial units.
+"""Example 3a — Render an isolated spread footing drawing (Plan + Section) in Imperial units.
 
 This example demonstrates generating a structural footing drawing using
-Imperial unit parameters (inches) directly via :class:`struct_draw.core.data.FootingData`.
+Imperial unit parameters (inches) directly via :class:`struct_draw.core.data.IsolatedFootingData`.
 """
 
 from __future__ import annotations
@@ -13,12 +13,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import struct_draw as sd
-from struct_draw.core.data import FootingData, Rebar, ScheduleRow, Stirrup
+from struct_draw.core.data import IsolatedFootingData, Rebar, ScheduleRow, Stirrup
 
 
 def main() -> None:
-    # FootingData creation using FootingData.from_imperial with clean parameter names (Imperial units in inches)
-    footing_imperial = FootingData.from_imperial(
+    # IsolatedFootingData creation using IsolatedFootingData.from_imperial (parameters in inches)
+    footing_imperial = IsolatedFootingData.from_imperial(
         name="F1",
         length=72.0,             # Footing length (6 ft = 72 in)
         width=72.0,              # Footing width (6 ft = 72 in)

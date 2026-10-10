@@ -8,7 +8,7 @@
 
 - **Production-Ready CAD Drawings**: Generates standard DXF files compatible with AutoCAD, BricsCAD, DraftSight, and LibreCAD.
 - **Native AutoCAD `MULTILEADER` Entities**: Annotations for rebar, beams, and structural notes use CAD native `MULTILEADER` objects so text and leader arrows stay linked during manual CAD edits.
-- **Dual Unit Support**: Full support for both **Imperial (US customary)** and **SI Metric** units, with explicit unit helper constructors (e.g., `FootingData.from_metric(...)`).
+- **Dual Unit Support**: Full support for both **Imperial (US customary)** and **SI Metric** units, with explicit unit helper constructors (e.g., `IsolatedFootingData.from_metric(...)` / `FootingData.from_metric(...)`).
 - **Comprehensive Structural Element Library**:
   - **General Arrangement (GA) Framing Plans & Elevations**: Complete building floor framing plans, frame elevations along grid lines, and roof trusses directly from a `StructuralModel` or `Project`, showing columns, beams, braces, grid bubbles, story levels, bay dimensions, and member marks without requiring prior rebar design.
   - **Spread / Isolated Footings**: Plan and section views, sloped/stepped footing geometry, column dowels, hook bends, distribution mats, GL (Ground Level) / PL (Plinth Level) markers, and grid axes.
@@ -161,24 +161,24 @@ Here is a complete example of generating a spread footing drawing (Plan + Sectio
 ```python
 from pathlib import Path
 import struct_draw as sd
-from struct_draw.core.data import FootingData, Rebar, Stirrup
+from struct_draw.core.data import IsolatedFootingData, FootingData, Rebar, Stirrup
 
 # 1. Define Footing Parameters in SI Metric Units (mm)
-footing_si = FootingData.from_metric(
+footing_si = IsolatedFootingData.from_metric(
     name="F2",
-    length_mm=1600.0,           # Footing length (1600 mm)
-    width_mm=1600.0,            # Footing width (1600 mm)
-    mid_thick_mm=400.0,         # Central footing thickness (400 mm)
-    edge_thick_mm=200.0,        # Edge footing thickness (200 mm)
-    col_width_mm=350.0,         # Column width (350 mm)
-    col_depth_mm=350.0,         # Column depth (350 mm)
-    col_height_mm=2100.0,       # Column height above footing (2100 mm)
-    fd_depth_mm=1500.0,         # Foundation depth below Ground Level (1500 mm)
-    pl_height_mm=600.0,         # Plinth Level height above Ground Level (600 mm)
-    cover_mm=75.0,              # Concrete clear cover (75 mm)
-    bar_dia_mm=12.0,            # Footing mat rebar diameter (12 mm)
-    bar_spacing_mm=150.0,       # Rebar spacing center-to-center (150 mm c/c)
-    ld_mm=600.0,                # Development length Ld (600 mm)
+    length=1600.0,              # Footing length (1600 mm)
+    width=1600.0,               # Footing width (1600 mm)
+    mid_thick=400.0,            # Central footing thickness (400 mm)
+    edge_thick=200.0,           # Edge footing thickness (200 mm)
+    col_width=350.0,            # Column width (350 mm)
+    col_depth=350.0,            # Column depth (350 mm)
+    col_height=2100.0,          # Column height above footing (2100 mm)
+    fd_depth=1500.0,            # Foundation depth below Ground Level (1500 mm)
+    pl_height=600.0,            # Plinth Level height above Ground Level (600 mm)
+    cover=75.0,                 # Concrete clear cover (75 mm)
+    bar_dia=12.0,               # Footing mat rebar diameter (12 mm)
+    bar_spacing=150.0,          # Rebar spacing center-to-center (150 mm c/c)
+    ld=600.0,                   # Development length Ld (600 mm)
     column_bars=(
         Rebar(mark="C1", size="16mm dia", quantity=4, length_in=3000.0),
     ),
@@ -198,18 +198,19 @@ print(f"Footing DXF successfully created at: {output_path.resolve()}")
 
 ```python
 import struct_draw as sd
-from struct_draw.core.data import FootingData, Rebar, Stirrup
+from struct_draw.core.data import IsolatedFootingData, FootingData, Rebar, Stirrup
 
-footing_us = FootingData(
+footing_us = IsolatedFootingData(
     name="F1",
     length_in=72.0,             # 6 ft length
     width_in=72.0,              # 6 ft width
-    thickness_in=18.0,          # 1.5 ft thickness
-    col_width_in=16.0,          # Column width
-    col_depth_in=16.0,          # Column depth
+    mid_thickness_in=18.0,      # 1.5 ft thickness
+    edge_thickness_in=10.0,
+    column_width_in=16.0,       # Column width
+    column_depth_in=16.0,       # Column depth
     cover_in=3.0,               # Clear cover
-    main_bar_dia_in=0.625,      # #5 rebar
-    main_bar_spacing_in=6.0,    # 6" c/c
+    bar_dia_in=0.625,           # #5 rebar
+    bar_spacing_in=6.0,         # 6" c/c
     column_bars=(Rebar(mark="C1", size="#6", quantity=4),),
     column_stirrups=Stirrup(size="#3", spacing_in=4.0, legs=2),
 )
@@ -227,13 +228,13 @@ sd.save_dxf(footing_us, "footing_drawing_us.dxf")
 - **Automatic Unit Weight Calculations**: Built-in weight tables for standard ASTM A615 imperial sizes (`#3` to `#18` in $lbs/ft$) and metric bar diameters per IS 1786 / EN 10080 ($kg/m$ via $d^2 / 162.2$).
 - **Grand Total Weight Summary**: Computes total estimated reinforcement tonnage/weight and adds a summary row.
 - **Dynamic Formatting & Clean Centering**: Dynamic column width calculation prevents text overlap; supports `align="center"`, `align="left"`, and `align="right"` for seamless alignment under foundation pads and column views.
-- **Direct Element Integration**: Simply attach a `schedule` tuple of `ScheduleRow` objects to `FootingData`, `CombinedFootingData`, or `ColumnData`:
+- **Direct Element Integration**: Simply attach a `schedule` tuple of `ScheduleRow` objects to `IsolatedFootingData` (or `FootingData`), `CombinedFootingData`, or `ColumnData`:
 
 ```python
-from struct_draw.core.data import FootingData, ScheduleRow, Rebar, Stirrup
+from struct_draw.core.data import IsolatedFootingData, ScheduleRow, Rebar, Stirrup
 import struct_draw as sd
 
-footing = FootingData.from_metric(
+footing = IsolatedFootingData.from_metric(
     name="F1",
     length=1800.0,
     width=1800.0,

@@ -11,8 +11,10 @@ For each member type the adapter exposes a single
 * :func:`from_beam_result` — reads a ``BeamDesignResult`` /
   ``BeamDetailingResult`` pair and returns a
   :class:`struct_draw.core.data.BeamData`.
-* :func:`from_footing_result` — reads a ``FootingDesignResult``
-  and returns a :class:`struct_draw.core.data.FootingData`.
+* :func:`from_isolated_footing_result` — reads an ``IsolatedFootingDesignResult``
+  and returns a :class:`struct_draw.core.data.IsolatedFootingData`.
+* :func:`from_combined_footing_result` — reads a ``CombinedFootingDesignResult``
+  and returns a :class:`struct_draw.core.data.CombinedFootingData`.
 * :func:`from_column_result` — reads a ``ColumnDesignResult`` and
   returns a :class:`struct_draw.core.data.ColumnData`.
 * :func:`from_staircase_result` — reads a ``StaircaseDesignResult``
@@ -32,8 +34,10 @@ from typing import Any
 from struct_draw.core.data import (
     BeamData,
     ColumnData,
+    CombinedFootingData,
     FootingData,
     GeometrySection,
+    IsolatedFootingData,
     Rebar,
     ScheduleRow,
     SlabData,
@@ -166,27 +170,303 @@ def from_beam_result(result: Any) -> BeamData:
     )
 
 
-def from_footing_result(result: Any) -> FootingData:
-    """Translate an ACI 318 footing result into :class:`FootingData`."""
-    design = result[0] if isinstance(result, tuple) else result
-    detailing = result[1] if isinstance(result, tuple) else _safe_getattr(design, "detailing", None)
-    return FootingData(
-        name=str(_safe_getattr(design, "name", "F1") or "F1"),
-        length_in=float(_safe_getattr(design, "length", 64.0) or 64.0),
-        width_in=float(_safe_getattr(design, "width", 64.0) or 64.0),
-        mid_thickness_in=float(_safe_getattr(design, "mid_thickness", 16.0) or 16.0),
-        edge_thickness_in=float(_safe_getattr(design, "edge_thickness", 8.0) or 8.0),
-        column_width_in=float(_safe_getattr(design, "column_width", 14.0) or 14.0),
-        column_depth_in=float(_safe_getattr(design, "column_depth", 14.0) or 14.0),
+def from_isolated_footing_result(result: Any) -> IsolatedFootingData:
+    """Translate an ACI 318 isolated footing result into :class:`IsolatedFootingData`."""
+    coordinator = None
+    if isinstance(result, tuple) and len(result) == 2:
+        elem1, elem2 = result
+        if hasattr(elem1, "col_c1") or hasattr(elem1, "concrete"):
+            coordinator, design = elem1, elem2
+            detailing = _safe_getattr(elem2, "detailing", None)
+        elif hasattr(elem2, "col_c1") or hasattr(elem2, "concrete"):
+            coordinator, design = elem2, elem1
+            detailing = _safe_getattr(elem1, "detailing", None)
+        else:
+            design, detailing = elem1, elem2
+    else:
+        design = result
+        detailing = _safe_getattr(design, "detailing", None)
+
+    name = str(
+        _safe_getattr(design, "name", None)
+        or _safe_getattr(design, "member_id", None)
+        or _safe_getattr(coordinator, "member_id", None)
+        or _safe_getattr(detailing, "member_id", "F1")
+        or "F1"
+    )
+
+    raw_l = float(_safe_getattr(design, "length_in", None) or _safe_getattr(design, "length", 64.0) or 64.0)
+    length_in = raw_l * 12.0 if raw_l <= 30.0 else raw_l
+
+    raw_w = float(_safe_getattr(design, "width_in", None) or _safe_getattr(design, "width", 64.0) or 64.0)
+    width_in = raw_w * 12.0 if raw_w <= 30.0 else raw_w
+
+    thickness = float(
+        _safe_getattr(design, "mid_thickness", None)
+        or _safe_getattr(design, "thickness", None)
+        or _safe_getattr(coordinator, "thickness", 16.0)
+        or 16.0
+    )
+    edge_thickness = float(
+        _safe_getattr(design, "edge_thickness", None)
+        or thickness
+    )
+
+    col_w = float(
+        _safe_getattr(design, "column_width", None)
+        or _safe_getattr(coordinator, "col_c1", None)
+        or 14.0
+    )
+    col_d = float(
+        _safe_getattr(design, "column_depth", None)
+        or _safe_getattr(coordinator, "col_c2", None)
+        or 14.0
+    )
+
+    cover = float(
+        _safe_getattr(design, "cover", None)
+        or _safe_getattr(coordinator, "cover", 3.0)
+        or 3.0
+    )
+
+    bar_dia = 0.5
+    bar_spacing = 6.0
+    if detailing and hasattr(detailing, "bars") and detailing.bars:
+        first_bar = detailing.bars[0]
+        bsize = str(_safe_getattr(first_bar, "bar_size", "#6"))
+        if bsize.startswith("#"):
+            try:
+                bar_dia = int(bsize[1:]) / 8.0
+            except ValueError:
+                bar_dia = 0.5
+        bar_count = int(_safe_getattr(first_bar, "count", 0))
+        if bar_count > 1 and width_in > 2 * cover:
+            bar_spacing = round((width_in - 2 * cover) / (bar_count - 1), 1)
+
+    bar_dia_in = float(_safe_getattr(design, "bar_dia", bar_dia) or bar_dia)
+    bar_spacing_in = float(_safe_getattr(design, "bar_spacing", bar_spacing) or bar_spacing)
+
+    col_bars_raw = _safe_getattr(detailing, "column_bars", None)
+    if col_bars_raw:
+        col_bars = tuple(_rebar_from(b) for b in col_bars_raw)
+    else:
+        col_bars = (
+            Rebar(mark="CB1", size="#8", quantity=4, length_in=120.0, remarks="Column Starter Dowels"),
+        )
+
+    col_stirrup = _stirrup_from(
+        _safe_getattr(detailing, "column_stirrup", None)
+        or _safe_getattr(design, "column_stirrup", None)
+        or Stirrup(size="#4", spacing_in=6.0, legs=2)
+    )
+
+    ld = float(
+        _safe_getattr(design, "Ld", None)
+        or _safe_getattr(design, "development_length", None)
+        or 24.0
+    )
+
+    return IsolatedFootingData(
+        name=name,
+        length_in=length_in,
+        width_in=width_in,
+        mid_thickness_in=thickness,
+        edge_thickness_in=edge_thickness,
+        column_width_in=col_w,
+        column_depth_in=col_d,
         column_height_in=float(_safe_getattr(design, "column_height", 84.0) or 84.0),
         footing_depth_in=float(_safe_getattr(design, "footing_depth", 60.0) or 60.0),
         plinth_height_in=float(_safe_getattr(design, "plinth_height", 24.0) or 24.0),
-        cover_in=float(_safe_getattr(design, "cover", 3.0) or 3.0),
-        bar_dia_in=float(_safe_getattr(design, "bar_dia", 0.5) or 0.5),
-        bar_spacing_in=float(_safe_getattr(design, "bar_spacing", 6.0) or 6.0),
-        column_bars=tuple(_rebar_from(b) for b in (_safe_getattr(detailing, "column_bars", []) or ())),
-        column_stirrups=_stirrup_from(_safe_getattr(detailing, "column_stirrup", None) or design),
-        development_length_in=float(_safe_getattr(design, "Ld", _safe_getattr(design, "development_length", 24.0)) or 24.0),
+        cover_in=cover,
+        bar_dia_in=bar_dia_in,
+        bar_spacing_in=bar_spacing_in,
+        column_bars=col_bars,
+        column_stirrups=col_stirrup,
+        development_length_in=ld,
+        scale=SCALE_1_2_IN,
+        unit=DrawingUnit.IN,
+    )
+
+
+def from_combined_footing_result(result: Any) -> CombinedFootingData:
+    """Translate an ACI 318 combined footing result into :class:`CombinedFootingData`."""
+    coordinator = None
+    if isinstance(result, tuple) and len(result) == 2:
+        elem1, elem2 = result
+        if hasattr(elem1, "col1_c1") or hasattr(elem1, "column_spacing_ft") or hasattr(elem1, "concrete"):
+            coordinator, design = elem1, elem2
+            detailing = _safe_getattr(elem2, "detailing", None)
+        elif hasattr(elem2, "col1_c1") or hasattr(elem2, "column_spacing_ft") or hasattr(elem2, "concrete"):
+            coordinator, design = elem2, elem1
+            detailing = _safe_getattr(elem1, "detailing", None)
+        else:
+            design, detailing = elem1, elem2
+    else:
+        design = result
+        detailing = _safe_getattr(design, "detailing", None)
+
+    name = str(
+        _safe_getattr(design, "name", None)
+        or _safe_getattr(design, "member_id", None)
+        or _safe_getattr(coordinator, "member_id", None)
+        or _safe_getattr(detailing, "member_id", "CF1")
+        or "CF1"
+    )
+
+    raw_l = float(_safe_getattr(design, "length_in", None) or _safe_getattr(design, "length", 140.0) or 140.0)
+    total_length_in = raw_l * 12.0 if raw_l <= 30.0 else raw_l
+
+    raw_w = float(_safe_getattr(design, "width_in", None) or _safe_getattr(design, "width", 64.0) or 64.0)
+    width_in = raw_w * 12.0 if raw_w <= 30.0 else raw_w
+
+    thickness_in = float(
+        _safe_getattr(design, "thickness", None)
+        or _safe_getattr(coordinator, "thickness", 24.0)
+        or 24.0
+    )
+
+    raw_col_spacing = float(
+        _safe_getattr(coordinator, "column_spacing_ft", None)
+        or _safe_getattr(design, "col_spacing_ft", None)
+        or 0.0
+    )
+    if raw_col_spacing > 0.0:
+        col_spacing_in = raw_col_spacing * 12.0
+    else:
+        col_spacing_in = float(
+            _safe_getattr(design, "col_spacing_in", None)
+            or _safe_getattr(design, "col_spacing", 32.0)
+            or 32.0
+        )
+
+    raw_cant_col1 = float(
+        _safe_getattr(coordinator, "cantilever_col1_ft", None)
+        or _safe_getattr(design, "cantilever_col1_ft", None)
+        or 0.0
+    )
+    if raw_cant_col1 > 0.0:
+        proj_left_in = raw_cant_col1 * 12.0
+    else:
+        proj_left_in = float(
+            _safe_getattr(design, "proj_left_in", None)
+            or _safe_getattr(design, "proj_left", 60.0)
+            or 60.0
+        )
+
+    if total_length_in > (proj_left_in + col_spacing_in):
+        proj_right_in = total_length_in - proj_left_in - col_spacing_in
+    else:
+        proj_right_in = float(
+            _safe_getattr(design, "proj_right_in", None)
+            or _safe_getattr(design, "proj_right", 48.0)
+            or 48.0
+        )
+
+    col1_w = float(
+        _safe_getattr(coordinator, "col1_c1", None)
+        or _safe_getattr(design, "col1_width", 14.0)
+        or 14.0
+    )
+    col1_d = float(
+        _safe_getattr(coordinator, "col1_c2", None)
+        or _safe_getattr(design, "col1_depth", 14.0)
+        or 14.0
+    )
+    col2_w = float(
+        _safe_getattr(coordinator, "col2_c1", None)
+        or _safe_getattr(design, "col2_width", 14.0)
+        or 14.0
+    )
+    col2_d = float(
+        _safe_getattr(coordinator, "col2_c2", None)
+        or _safe_getattr(design, "col2_depth", 14.0)
+        or 14.0
+    )
+
+    cover_in = float(
+        _safe_getattr(coordinator, "cover", None)
+        or _safe_getattr(design, "cover", 3.0)
+        or 3.0
+    )
+
+    bar_dia = 0.5
+    bar_spacing = 6.0
+    top_bar_dia = None
+    top_bar_spacing = None
+
+    if detailing and hasattr(detailing, "bars") and detailing.bars:
+        for bar in detailing.bars:
+            loc = str(_safe_getattr(bar, "location", "")).lower()
+            bsize = str(_safe_getattr(bar, "bar_size", "#8"))
+            dia = 0.5
+            if bsize.startswith("#"):
+                try:
+                    dia = int(bsize[1:]) / 8.0
+                except ValueError:
+                    dia = 0.5
+            cnt = int(_safe_getattr(bar, "count", 0))
+            spc = 6.0
+            if cnt > 1 and width_in > 2 * cover_in:
+                spc = round((width_in - 2 * cover_in) / (cnt - 1), 1)
+
+            if "top" in loc:
+                top_bar_dia = dia
+                top_bar_spacing = spc
+            else:
+                bar_dia = dia
+                bar_spacing = spc
+
+    bar_dia_in = float(_safe_getattr(design, "bar_dia", bar_dia) or bar_dia)
+    bar_spacing_in = float(_safe_getattr(design, "bar_spacing", bar_spacing) or bar_spacing)
+    if top_bar_dia is not None:
+        top_bar_dia_in = float(_safe_getattr(design, "top_bar_dia", top_bar_dia) or top_bar_dia)
+        top_bar_spacing_in = float(_safe_getattr(design, "top_bar_spacing", top_bar_spacing) or top_bar_spacing)
+    else:
+        top_bar_dia_in = None
+        top_bar_spacing_in = None
+
+    col_bars_raw = _safe_getattr(detailing, "column_bars", None)
+    if col_bars_raw:
+        col_bars = tuple(_rebar_from(b) for b in col_bars_raw)
+    else:
+        col_bars = (
+            Rebar(mark="CB1", size="#8", quantity=4, length_in=120.0, remarks="Col 1 Starter Dowels"),
+            Rebar(mark="CB2", size="#8", quantity=4, length_in=120.0, remarks="Col 2 Starter Dowels"),
+        )
+
+    col_stirrup = _stirrup_from(
+        _safe_getattr(detailing, "column_stirrup", None)
+        or _safe_getattr(design, "column_stirrup", None)
+        or Stirrup(size="#4", spacing_in=6.0, legs=2)
+    )
+
+    ld = float(
+        _safe_getattr(design, "Ld", None)
+        or _safe_getattr(design, "development_length", None)
+        or 24.0
+    )
+
+    return CombinedFootingData(
+        name=name,
+        proj_left_in=proj_left_in,
+        proj_right_in=proj_right_in,
+        col_spacing_in=col_spacing_in,
+        width_in=width_in,
+        thickness_in=thickness_in,
+        col1_width_in=col1_w,
+        col1_depth_in=col1_d,
+        col2_width_in=col2_w,
+        col2_depth_in=col2_d,
+        footing_depth_in=float(_safe_getattr(design, "footing_depth", 60.0) or 60.0),
+        plinth_height_in=float(_safe_getattr(design, "plinth_height", 24.0) or 24.0),
+        cover_in=cover_in,
+        bar_dia_in=bar_dia_in,
+        bar_spacing_in=bar_spacing_in,
+        top_bar_dia_in=top_bar_dia_in,
+        top_bar_spacing_in=top_bar_spacing_in,
+        column_bars=col_bars,
+        column_stirrups=col_stirrup,
+        development_length_in=ld,
         scale=SCALE_1_2_IN,
         unit=DrawingUnit.IN,
     )
@@ -274,7 +554,8 @@ def _placeholder_bottom_bar(section: GeometrySection) -> Rebar:
 
 __all__ = [
     "from_beam_result",
-    "from_footing_result",
+    "from_isolated_footing_result",
+    "from_combined_footing_result",
     "from_column_result",
     "from_staircase_result",
     "from_slab_result",

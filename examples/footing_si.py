@@ -1,7 +1,7 @@
-"""Example 3b — Render a spread footing drawing (Plan + Section) in SI metric units.
+"""Example 3b — Render an isolated spread footing drawing (Plan + Section) in SI metric units.
 
 This example demonstrates generating a structural footing drawing using
-SI metric unit parameters (mm) via :meth:`struct_draw.core.data.FootingData.from_metric`.
+SI metric unit parameters (mm) via :meth:`struct_draw.core.data.IsolatedFootingData.from_metric`.
 """
 
 from __future__ import annotations
@@ -13,12 +13,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import struct_draw as sd
-from struct_draw.core.data import FootingData, Rebar, ScheduleRow, Stirrup
+from struct_draw.core.data import IsolatedFootingData, Rebar, ScheduleRow, Stirrup
 
 
 def main() -> None:
-    # SI Units creation using FootingData.from_metric (parameters in mm)
-    footing_si = FootingData.from_metric(
+    # SI Units creation using IsolatedFootingData.from_metric (parameters in mm)
+    footing_si = IsolatedFootingData.from_metric(
         name="F2",
         length=1600.0,           # Footing length (1600 mm)
         width=1600.0,            # Footing width (1600 mm)

@@ -1,69 +1,77 @@
-"""Example 4 — Build a footing drawing from an ACI 318 design & detailing result.
-
-This example demonstrates how to consume results from an external calculation library
-(such as `aci318`) via `struct_draw.adapters.aci318.from_footing_result`.
+"""Example 4 — Build an isolated spread footing drawing from actual ACI 318 design.
 
 Workflow:
-  1. Receive or construct an ACI 318 Footing Design + Detailing result object.
-  2. Translate it into a :class:`struct_draw.core.data.FootingData` using
-     :func:`struct_draw.adapters.aci318.from_footing_result`.
-  3. Render to DXF using :func:`struct_draw.save_dxf`.
+  1. Perform actual ACI 318-19 isolated spread footing structural design using `aci318`.
+  2. Translate the calculation & reinforcement detailing output into a `struct_draw.IsolatedFootingData`
+     schema using `struct_draw.adapters.aci318.from_isolated_footing_result`.
+  3. Render professional construction DXF drawing using `struct_draw.save_dxf`.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-
-# Add project root to sys.path for direct execution without pip install
 import sys
+
+# Ensure projects in workspace are discoverable when run directly
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from types import SimpleNamespace
-
+from aci318 import (
+    ACI318_19,
+    Concrete,
+    IsolatedFooting,
+    LoadEffects,
+    Steel,
+)
 import struct_draw as sd
-from struct_draw.adapters.aci318 import from_footing_result
+from struct_draw.adapters.aci318 import from_isolated_footing_result
 
 
-def make_fake_aci318_footing_result() -> tuple[SimpleNamespace, SimpleNamespace]:
-    """Construct a mock ACI 318 footing design and detailing result."""
-    design = SimpleNamespace(
-        name="F3",
-        length=80.0,             # 80 inches (6.67 ft)
-        width=80.0,              # 80 inches
-        mid_thickness=20.0,      # 20 inches
-        edge_thickness=10.0,     # 10 inches
-        column_width=16.0,       # 16 inches
-        column_depth=16.0,       # 16 inches
-        column_height=90.0,      # 90 inches
-        footing_depth=60.0,      # 60 inches below GL
-        plinth_height=24.0,      # 24 inches above GL
-        cover=3.0,               # 3 inches
-        bar_dia=0.75,            # #6 bar (0.75 in)
-        bar_spacing=6.0,         # 6 inches c/c
-        Ld=30.0,                 # Development length 30 inches
+def design_isolated_footing():
+    """Run an actual ACI 318-19 design for an isolated spread footing."""
+    code = ACI318_19()
+    concrete = Concrete(fc=3.0)  # f'c = 3.0 ksi
+    steel = Steel(fy=60.0)      # fy = 60.0 ksi
+
+    # Factored column demand: Pu = 272 kips, Mu = 150 kip-in
+    loads = LoadEffects(Pu=272.0, Mu=150.0)
+
+    # Footing dimensions: 8.0 ft x 8.0 ft x 24.0 in thick supporting 16" x 16" column
+    footing = IsolatedFooting(
+        length=8.0,            # 8.0 ft (96 in)
+        width=8.0,             # 8.0 ft (96 in)
+        thickness=24.0,        # 24.0 in
+        col_c1=16.0,           # 16.0 in column
+        col_c2=16.0,           # 16.0 in column
+        concrete=concrete,
+        steel=steel,
+        code=code,
+        allowable_q=5.0,       # 5.0 ksf
+        bar_size="#6",
+        member_id="FTG-101",
     )
 
-    detailing = SimpleNamespace(
-        column_bars=(
-            SimpleNamespace(mark="CB1", size="#8", quantity=4, length=120.0),
-        ),
-        column_stirrup=SimpleNamespace(size="#4", spacing=6.0, legs=2),
-        schedule_rows=(
-            SimpleNamespace(mark="F3-B1", size="#6", quantity=14, length=86.0, remarks="Bottom X-Dir"),
-            SimpleNamespace(mark="F3-B2", size="#6", quantity=14, length=86.0, remarks="Bottom Y-Dir"),
-            SimpleNamespace(mark="F3-CB1", size="#8", quantity=4, length=120.0, remarks="Column Starter Dowels"),
-            SimpleNamespace(mark="F3-T1", size="#4", quantity=15, length=56.0, remarks="Column Ties @ 6\" c/c"),
-        ),
-    )
-
-    return design, detailing
+    result = footing.design(loads=loads)
+    return footing, result
 
 
 def main() -> None:
-    design, detailing = make_fake_aci318_footing_result()
+    footing, result = design_isolated_footing()
+
+    print("=" * 60)
+    print(" 1. ACI 318-19 ISOLATED FOOTING DESIGN OUTPUT")
+    print("=" * 60)
+    print(f"Footing ID:           {footing.member_id}")
+    print(f"Dimensions:           {footing.length:.1f} ft x {footing.width:.1f} ft x {footing.thickness:.1f} in")
+    print(f"Column:               {footing.col_c1:.0f}\" x {footing.col_c2:.0f}\"")
+    print(f"Status:               {result.status}")
+    print(f"Soil Pressure:        {result.max_bearing_pressure:.2f} ksf (allowable: {result.allowable_bearing_capacity:.2f} ksf)")
+    print(f"One-Way Shear:        {result.one_way_shear.status} (DCR = {result.one_way_shear.demand_capacity_ratio:.2f})")
+    print(f"Punching Shear:       {result.punching_shear.status} (DCR = {result.punching_shear.demand_capacity_ratio:.2f})")
+    print(f"Required As (X / Y):  {result.required_As_x:.2f} in^2 / {result.required_As_y:.2f} in^2")
+    print("-" * 60)
 
     # Convert calculation results into struct_draw FootingData
-    footing_data = from_footing_result((design, detailing))
+    footing_data = from_isolated_footing_result((footing, result))
 
     out_dir = Path(__file__).resolve().parent / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -71,9 +79,14 @@ def main() -> None:
     out_path = out_dir / "output_footing_from_aci318.dxf"
     sd.save_dxf(footing_data, out_path)
 
+    print(" 2. STRUCT_DRAW CAD GENERATION")
+    print("-" * 60)
     print(f"Successfully generated footing drawing from ACI 318 result: {out_path.resolve()}")
-    print(f"  Footing Name: {footing_data.name}")
-    print(f"  Dimensions: {footing_data.length_in}\" x {footing_data.width_in}\" x {footing_data.mid_thickness_in}\"")
+    print(f"  Footing Name:       {footing_data.name}")
+    print(f"  Drawing Dimensions: {footing_data.length_in:.1f}\" x {footing_data.width_in:.1f}\" x {footing_data.mid_thickness_in:.1f}\"")
+    print(f"  Bar Diameter:       {footing_data.bar_dia_in:.3f}\" (#{int(round(footing_data.bar_dia_in * 8))})")
+    print(f"  Bar Spacing:        {footing_data.bar_spacing_in:.1f}\" c/c")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

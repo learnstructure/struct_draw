@@ -18,6 +18,7 @@ from struct_draw.core.data import (  # noqa: E402
     BeamData,
     ColumnData,
     CombinedFootingData,
+    IsolatedFootingData,
     FootingData,
     GeometrySection,
     ScheduleRow,
@@ -59,8 +60,8 @@ def _column_with_schedule() -> ColumnData:
     )
 
 
-def _footing() -> FootingData:
-    return FootingData(
+def _footing() -> IsolatedFootingData:
+    return IsolatedFootingData(
         name="F1",
         length_in=96.0,
         width_in=96.0,

@@ -424,8 +424,8 @@ class BeamProfileData:
 
 
 @dataclass(frozen=True)
-class FootingData:
-    """All information needed to draw a spread footing (section + plan).
+class IsolatedFootingData:
+    """All information needed to draw an isolated spread footing (section + plan).
 
     Attributes
     ----------
@@ -523,8 +523,8 @@ class FootingData:
         schedule: Sequence[ScheduleRow] = (),
         scale: Any = None,
         unit: Any = None,
-    ) -> FootingData:
-        """Construct FootingData directly from SI metric parameters."""
+    ) -> IsolatedFootingData:
+        """Construct IsolatedFootingData directly from SI metric parameters."""
         _length = length if length is not None else 1600.0
         _width = width if width is not None else 1600.0
         _mid_thick = mid_thick if mid_thick is not None else 400.0
@@ -607,8 +607,8 @@ class FootingData:
         schedule: Sequence[ScheduleRow] = (),
         scale: Any = None,
         unit: Any = None,
-    ) -> FootingData:
-        """Construct FootingData directly from Imperial parameters (in inches)."""
+    ) -> IsolatedFootingData:
+        """Construct IsolatedFootingData directly from Imperial parameters (in inches)."""
         _length = length if length is not None else 64.0
         _width = width if width is not None else 64.0
         _mid_thick = mid_thick if mid_thick is not None else 16.0
@@ -659,6 +659,10 @@ class FootingData:
             scale=scale,
             unit=unit or "in",
         )
+
+
+FootingData = IsolatedFootingData
+"""Alias for :class:`IsolatedFootingData`."""
 
 
 @dataclass(frozen=True)
@@ -1685,6 +1689,7 @@ __all__ = [
     "BeamData",
     "BeamProfileSpan",
     "BeamProfileData",
+    "IsolatedFootingData",
     "FootingData",
     "CombinedFootingData",
     "ColumnData",

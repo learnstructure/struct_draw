@@ -20,6 +20,7 @@ from struct_draw.core.data import (
     BeamProfileData,
     ColumnData,
     CombinedFootingData,
+    IsolatedFootingData,
     FootingData,
     FrameElevationData,
     FramingPlanData,
@@ -173,7 +174,7 @@ def _render_dxf(data: Any) -> DrawingResult:
     elif isinstance(data, BeamProfileData):
         beam_profile.drawing(msp, data, **extra_kw)
         metadata["views"] = ["profile", "section"]
-    elif isinstance(data, FootingData):
+    elif isinstance(data, (IsolatedFootingData, FootingData)):
         ref_sec = footing.section_view(msp, data, **extra_kw)
         footing_margin = 800.0 if is_metric else 35.0
         y_offset = -(data.footing_depth_in + data.plinth_height_in + data.width_in / 2.0 + footing_margin)

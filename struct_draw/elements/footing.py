@@ -37,7 +37,7 @@ from struct_draw.core.composite import (
     draw_stirrup_hooked,
     draw_text,
 )
-from struct_draw.core.data import FootingData, Rebar
+from struct_draw.core.data import FootingData, IsolatedFootingData, Rebar
 from struct_draw.core.primitives import draw_rectangle
 
 
@@ -83,14 +83,14 @@ def _format_dim(val: float, is_metric: bool = False, include_unit: bool = False)
     return f'{val:.1f}"'
 
 
-def bar_off_y(footing: FootingData) -> float:
+def bar_off_y(footing: IsolatedFootingData) -> float:
     """The vertical offset of a footing bar from the concrete face."""
     return footing.cover_in + footing.bar_dia_in / 2.0
 
 
 def section_view(
     target: Any,
-    footing: FootingData,
+    footing: IsolatedFootingData,
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,
@@ -536,7 +536,7 @@ def section_view(
 
 def plan_view(
     target: Any,
-    footing: FootingData,
+    footing: IsolatedFootingData,
     *,
     origin: tuple[float, float] = (0.0, 0.0),
     title: str | None = None,

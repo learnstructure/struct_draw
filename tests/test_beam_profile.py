@@ -96,7 +96,7 @@ class TestBeamProfile(unittest.TestCase):
         self.assertEqual(data.col_width_in, 18.0)
 
     def test_footing_from_imperial(self):
-        from struct_draw.core.data import FootingData
+        from struct_draw.core.data import FootingData, IsolatedFootingData
         footing = FootingData.from_imperial(
             name="F1",
             length=72.0,
@@ -113,6 +113,7 @@ class TestBeamProfile(unittest.TestCase):
             bar_spacing=6.0,
             ld=24.0,
         )
+        self.assertIsInstance(footing, IsolatedFootingData)
         self.assertFalse(footing.is_metric)
         self.assertEqual(footing.length_in, 72.0)
         self.assertEqual(footing.mid_thickness_in, 18.0)
