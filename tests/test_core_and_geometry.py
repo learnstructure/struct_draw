@@ -224,8 +224,8 @@ def test_column_elevation_aci318_seismic_detailing() -> None:
 
     t = Target()
     refs = column.elevation_view(t, col, origin=(0.0, 0.0))
-    # Verify Lo >= max(w, d, H/6, 18")
-    assert refs["lo"] >= max(20.0, 144.0 / 6.0, 18.0)
+    # Verify Lo >= max(w, d, Lu/6, 18") per ACI 318 §18.7.5.1
+    assert refs["lo"] >= max(20.0, refs["clear_height"] / 6.0, 18.0)
     # Verify so is closely spaced (<= 4")
     assert refs["so"] <= 4.0
     # Verify lap splice is provided

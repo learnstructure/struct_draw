@@ -92,7 +92,7 @@ def section_view(
     d_scale = scale or getattr(beam, "scale", None) or (SCALE_1_30 if is_m else SCALE_1_2_IN)
 
     dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
-    title_height = DEFAULT_ANNOTATION_CONFIG.title_height(d_scale, d_unit)
+    title_height = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
     dim_style = "DIM_SECTION" if is_m else "DIM_SECTION"
 
     refs: dict[str, Any] = {"origin": (ox, oy), "width": w, "depth": d}
@@ -160,9 +160,8 @@ def section_view(
     # ----- Section title.
     if title is None:
         title = f"Section @ {beam.name}"
-    title_y = oy - dim_offset * 2.4
-    title_x = ox + w / 2.0 - len(title) * title_height * 0.28
-    draw_text(target, title, position=(title_x, title_y), height=title_height, layer="TEXT")
+    title_y = oy - dim_offset * 1.8
+    draw_text(target, title, position=(ox + w / 2.0, title_y), height=title_height, align="middle_center", layer="TEXT")
 
     refs.update({"section_origin": (ox, oy)})
     return refs
@@ -211,7 +210,7 @@ def elevation_view(
     d_scale = scale or (SCALE_1_50 if is_m else SCALE_1_4_IN)
 
     dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
-    title_height = DEFAULT_ANNOTATION_CONFIG.title_height(d_scale, d_unit)
+    title_height = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
     dim_style = "DIM_ELEV" if is_m else "Linear"
 
     refs: dict[str, Any] = {"origin": (ox, oy), "length": L}
@@ -261,7 +260,7 @@ def elevation_view(
 
     if title is None:
         title = f"Elevation of {beam.name}"
-    draw_text(target, title, position=(ox, oy + d + dim_offset * 0.8), height=title_height, layer="TEXT")
+    draw_text(target, title, position=(ox + L / 2.0, oy + d + dim_offset * 0.8), height=title_height, align="middle_center", layer="TEXT")
 
     refs.update({"elevation_origin": (ox, oy)})
     return refs

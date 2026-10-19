@@ -526,8 +526,9 @@ def section_view(
     draw_text(
         target,
         t1_str,
-        position=(title_cx - len(t1_str) * text_sz * 0.28, title_y),
-        height=text_sz * 1.2,
+        position=(title_cx, title_y),
+        height=text_sz,
+        align="middle_center",
         layer="Text",
     )
 
@@ -535,8 +536,9 @@ def section_view(
     draw_text(
         target,
         t2_str,
-        position=(title_cx - len(t2_str) * text_sz * 0.25, title_y - text_sz * 1.8),
-        height=text_sz,
+        position=(title_cx, title_y - text_sz * 1.8),
+        height=text_sz * 0.85,
+        align="middle_center",
         layer="Text",
     )
 
@@ -693,8 +695,9 @@ def plan_view(
     draw_text(
         target,
         plan_title_str,
-        position=(plan_cx - len(plan_title_str) * text_sz * 0.28, plan_y),
-        height=text_sz * 1.2,
+        position=(plan_cx, plan_y),
+        height=text_sz,
+        align="middle_center",
         layer="Text",
     )
 

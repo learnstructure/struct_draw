@@ -38,6 +38,7 @@ from struct_draw.core.units import (
 from struct_draw.core.data import (
     BeamData,
     ColumnData,
+    ColumnScheduleData,
     CombinedFootingData,
     FootingData,
     GeometrySection,
@@ -81,6 +82,7 @@ __all__ = [
     "SCALE_3_IN",
     "BeamData",
     "ColumnData",
+    "ColumnScheduleData",
     "CombinedFootingData",
     "IsolatedFootingData",
     "FootingData",

@@ -165,13 +165,17 @@ def profile_view(
         draw_line(target, (gx, y_col_bot - grid_ext * 0.5), (gx, y_grid_bubble), layer=lay_cen)
         # Grid Bubble
         draw_circle(target, (gx, y_grid_bubble + bubble_rad), radius=bubble_rad, layer=lay_dim)
-        # Label text inside bubble
-        label = grid_labels[idx] if idx < len(grid_labels) else (chr(65 + idx) if idx < 26 else f"G{idx+1}")
+        # Label text inside bubble (display clean single mark, e.g. 'A', '1')
+        raw_label = grid_labels[idx] if idx < len(grid_labels) else (chr(65 + idx) if idx < 26 else f"G{idx+1}")
+        clean_lbl = raw_label
+        if clean_lbl.upper().startswith("GRID "):
+            clean_lbl = clean_lbl[5:].strip()
         draw_text(
             target,
-            label,
-            position=(gx - text_size * 0.35, y_grid_bubble + bubble_rad - text_size * 0.35),
+            clean_lbl,
+            position=(gx, y_grid_bubble + bubble_rad),
             height=text_size,
+            align="middle_center",
             layer=lay_text,
         )
 
@@ -482,13 +486,14 @@ def profile_view(
         text_layer=lay_text,
     )
 
-    # 7. Main Drawing Title MText
+    # 7. Main Drawing Title MText (generous width prevents wrapping to multiple lines)
     title_text = title or beam_profile.name or "L-SECTION OF BEAM ALONG GRIDS A-A"
+    t_half_len = len(title_text) * title_size * 0.30
     draw_mtext(
         target,
         title_text,
-        position=(ox + total_len / 2.0 - (1500.0 if is_metric else 60.0), y_col_bot - dim_layer_gap * 5.0),
-        width=(10000.0 if is_metric else 400.0),
+        position=(ox + total_len / 2.0 - t_half_len, y_col_bot - dim_layer_gap * 5.0),
+        width=(25000.0 if is_metric else 1000.0),
         height=title_size,
         layer=lay_text,
     )
@@ -532,7 +537,7 @@ def section_views(
         text_size = 125.0 if is_metric else 5.0
         dim_gap = 150.0 if is_metric else 6.0
     dot_dia = 20.0 if is_metric else 0.75
-    section_spacing = w + (1200.0 if is_metric else 48.0)
+    section_spacing = max(w * 3.0, w + (2600.0 if is_metric else 100.0))
 
     # ----- Section 1-1: Support Section (With Top Extra Bars) -----
     ox1 = ox
@@ -601,8 +606,9 @@ def section_views(
     draw_text(
         target,
         "SECTION 1-1",
-        position=(ox1 + w / 2.0 - len("SECTION 1-1") * text_size * 0.28, oy1 - dim_gap * 2.2),
+        position=(ox1 + w / 2.0, oy1 - dim_gap * 2.2),
         height=text_size,
+        align="middle_center",
         layer=lay_text,
     )
 
@@ -662,8 +668,9 @@ def section_views(
     draw_text(
         target,
         "SECTION 2-2",
-        position=(ox2 + w / 2.0 - len("SECTION 2-2") * text_size * 0.28, oy2 - dim_gap * 2.2),
+        position=(ox2 + w / 2.0, oy2 - dim_gap * 2.2),
         height=text_size,
+        align="middle_center",
         layer=lay_text,
     )
 
@@ -695,10 +702,12 @@ def drawing(
     # 1. Draw Profile View (Elevation)
     refs_prof = profile_view(target, beam_profile, origin=(ox, oy), title=title, scale=scale, unit=unit)
 
-    # Position section views below or alongside the profile
+    # Position section views below or alongside the profile, centered under run
     total_len = sum(beam_profile.spans_in) if beam_profile.spans_in else 600.0
     sec_y = oy - (2500.0 if is_metric else 100.0)
-    sec_x = ox + total_len / 2.0 - beam_profile.beam_width_in
+    w_bm = beam_profile.beam_width_in
+    spacing = max(w_bm * 3.0, w_bm + (2600.0 if is_metric else 100.0))
+    sec_x = ox + (total_len - (spacing + w_bm)) / 2.0
 
     refs_sec = section_views(target, beam_profile, origin=(sec_x, sec_y), scale=scale, unit=unit)
 

@@ -29,6 +29,7 @@ overlap, fully respecting bounding boxes and dimensions.
 from __future__ import annotations
 
 import math
+import textwrap
 from typing import Any
 
 from struct_draw.core.composite import (
@@ -41,8 +42,8 @@ from struct_draw.core.composite import (
     draw_rebar_circle,
     draw_text,
 )
-from struct_draw.core.data import ColumnData, Rebar
-from struct_draw.core.primitives import draw_rectangle
+from struct_draw.core.data import ColumnData, ColumnScheduleData, Rebar
+from struct_draw.core.primitives import draw_mtext, draw_rectangle
 
 
 # ---------------------------------------------------------------------------
@@ -334,10 +335,10 @@ def section_view(
     if title is None:
         title = f"SECTION @ {column.name}"
     title_pos = (ox + w / 2.0, oy - dim_offset * 1.8)
-    draw_text(target, title, position=title_pos, height=text_height * 1.2, layer="TITLE")
+    draw_text(target, title, position=title_pos, height=text_height, align="middle_center", layer="TITLE")
 
     scale_text = "SCALE 1:20" if is_metric else 'SCALE: 3/4" = 1\'-0"'
-    draw_text(target, scale_text, position=(ox + w / 2.0, title_pos[1] - text_height * 1.4), height=text_height * 0.75, layer="TEXT")
+    draw_text(target, scale_text, position=(ox + w / 2.0, title_pos[1] - text_height * 1.4), height=text_height * 0.75, align="middle_center", layer="TEXT")
 
     # Bounding box
     min_x = ox - dim_offset * 1.8
@@ -383,7 +384,7 @@ def elevation_view(
     ox, oy = origin
     w = column.section.width_in
     d = column.section.depth_in
-    H = column.height_in
+    H_story = column.height_in
     cover = column.section.cover_in
 
     scale = scale or getattr(column, "scale", None)
@@ -405,7 +406,9 @@ def elevation_view(
     arrow_size = text_height * 0.65
 
     # Framing member depths (upper beam and lower footing / foundation beam)
-    h_beam = min(H * 0.2, 600.0 if is_metric else 24.0)
+    # Story height H_story is node-to-node (e.g. 3500mm); clear column height Lu = H_story - h_beam.
+    h_beam = column.beam_depth_in if (column.beam_depth_in is not None and column.beam_depth_in > 0) else (400.0 if is_metric else 16.0)
+    Lu = max(w, H_story - h_beam)
     beam_ext = 800.0 if is_metric else 30.0
 
     # Bar sizes and diameters
@@ -420,8 +423,8 @@ def elevation_view(
     # 1. ACI 318 Seismic Parameters Calculation
     # -----------------------------------------------------------------------
     lo_min_abs = 450.0 if is_metric else 18.0
-    lo = max(w, d, H / 6.0, lo_min_abs)
-    lo = min(lo, H * 0.35)
+    lo = max(w, d, Lu / 6.0, lo_min_abs)
+    lo = min(lo, Lu * 0.35)
 
     # Seismic hoop spacing in Lo region: so <= min(w/4, d/4, 6*db, 6" / 150mm)
     so_max = min(w / 4.0, d / 4.0, 6.0 * main_bar_dia, 100.0 if is_metric else 4.0)
@@ -435,18 +438,18 @@ def elevation_view(
 
     # Class B Lap splice length: Ld = max(48 * db, 30" / 750mm)
     l_splice = max(48.0 * main_bar_dia, 750.0 if is_metric else 30.0)
-    l_splice = min(l_splice, (H - 2.0 * lo) * 0.85)
+    l_splice = min(l_splice, (Lu - 2.0 * lo) * 0.85)
 
-    # Lap splice location: centered at mid-height (H/2) (ACI 318 §18.7.4.3)
-    y_mid = oy + H / 2.0
+    # Lap splice location: centered at mid-height (Lu/2) (ACI 318 §18.7.4.3)
+    y_mid = oy + Lu / 2.0
     y_splice_bot = y_mid - l_splice / 2.0
     y_splice_top = y_mid + l_splice / 2.0
 
     # -----------------------------------------------------------------------
     # 2. Concrete Framing Outline (Column + Upper/Lower Beams/Slabs)
     # -----------------------------------------------------------------------
-    # Main Column Shaft
-    draw_rectangle(target, origin=(ox, oy), width=w, height=H, layer="COLUMN")
+    # Main Column Shaft (Clear Height Lu)
+    draw_rectangle(target, origin=(ox, oy), width=w, height=Lu, layer="COLUMN")
 
     # Lower framing (Floor / Footing / Foundation Beam)
     jog_beam = min(beam_ext * 0.15, 30.0 if is_metric else 1.5)
@@ -456,18 +459,18 @@ def elevation_view(
     draw_break_line(target, p1=(ox - beam_ext, oy), p2=(ox - beam_ext, oy - h_beam), jog=jog_beam, layer="BREAK_LINE")
     draw_break_line(target, p1=(ox + w + beam_ext, oy), p2=(ox + w + beam_ext, oy - h_beam), jog=jog_beam, layer="BREAK_LINE")
 
-    # Upper framing (Floor Beam / Slab)
-    draw_line(target, (ox - beam_ext, oy + H), (ox, oy + H), layer="COLUMN")
-    draw_line(target, (ox + w, oy + H), (ox + w + beam_ext, oy + H), layer="COLUMN")
-    draw_line(target, (ox - beam_ext, oy + H + h_beam), (ox + w + beam_ext, oy + H + h_beam), layer="COLUMN")
-    draw_break_line(target, p1=(ox - beam_ext, oy + H), p2=(ox - beam_ext, oy + H + h_beam), jog=jog_beam, layer="BREAK_LINE")
-    draw_break_line(target, p1=(ox + w + beam_ext, oy + H), p2=(ox + w + beam_ext, oy + H + h_beam), jog=jog_beam, layer="BREAK_LINE")
+    # Upper framing (Floor Beam / Slab from oy + Lu to oy + H_story)
+    draw_line(target, (ox - beam_ext, oy + Lu), (ox, oy + Lu), layer="COLUMN")
+    draw_line(target, (ox + w, oy + Lu), (ox + w + beam_ext, oy + Lu), layer="COLUMN")
+    draw_line(target, (ox - beam_ext, oy + H_story), (ox + w + beam_ext, oy + H_story), layer="COLUMN")
+    draw_break_line(target, p1=(ox - beam_ext, oy + Lu), p2=(ox - beam_ext, oy + H_story), jog=jog_beam, layer="BREAK_LINE")
+    draw_break_line(target, p1=(ox + w + beam_ext, oy + Lu), p2=(ox + w + beam_ext, oy + H_story), jog=jog_beam, layer="BREAK_LINE")
 
     # Column shaft continuing above upper floor (starter stub)
-    h_stub = min(H * 0.25, 450.0 if is_metric else 18.0)
-    draw_line(target, (ox, oy + H + h_beam), (ox, oy + H + h_beam + h_stub), layer="COLUMN")
-    draw_line(target, (ox + w, oy + H + h_beam), (ox + w, oy + H + h_beam + h_stub), layer="COLUMN")
-    draw_break_line(target, p1=(ox, oy + H + h_beam + h_stub), p2=(ox + w, oy + H + h_beam + h_stub), jog=jog_beam, layer="BREAK_LINE")
+    h_stub = min(Lu * 0.25, 450.0 if is_metric else 18.0)
+    draw_line(target, (ox, oy + H_story), (ox, oy + H_story + h_stub), layer="COLUMN")
+    draw_line(target, (ox + w, oy + H_story), (ox + w, oy + H_story + h_stub), layer="COLUMN")
+    draw_break_line(target, p1=(ox, oy + H_story + h_stub), p2=(ox + w, oy + H_story + h_stub), jog=jog_beam, layer="BREAK_LINE")
 
     # -----------------------------------------------------------------------
     # 3. Longitudinal Reinforcement & Seismic Lap Splice
@@ -500,7 +503,7 @@ def elevation_view(
         (ox + x_left + crank_offset, y_splice_bot),
         (ox + x_left + crank_offset, y_splice_bot + crank_h),
         (ox + x_left, y_splice_bot + crank_h * 2.0),
-        (ox + x_left, oy + H + h_beam + h_stub - cover),
+        (ox + x_left, oy + H_story + h_stub - cover),
     ]
     draw_polyline(target, pts_left_top, close=False, layer="REBAR")
 
@@ -508,7 +511,7 @@ def elevation_view(
         (ox + x_right - crank_offset, y_splice_bot),
         (ox + x_right - crank_offset, y_splice_bot + crank_h),
         (ox + x_right, y_splice_bot + crank_h * 2.0),
-        (ox + x_right, oy + H + h_beam + h_stub - cover),
+        (ox + x_right, oy + H_story + h_stub - cover),
     ]
     draw_polyline(target, pts_right_top, close=False, layer="REBAR")
 
@@ -517,7 +520,7 @@ def elevation_view(
         x_center = (x_left + x_right) / 2.0
         draw_line(target, (ox + x_center, oy - h_beam + cover * 1.5), (ox + x_center, y_splice_top), layer="REBAR")
         draw_line(target, (ox + x_center + crank_offset, y_splice_bot), (ox + x_center, y_splice_bot + crank_h * 2.0), layer="REBAR")
-        draw_line(target, (ox + x_center, y_splice_bot + crank_h * 2.0), (ox + x_center, oy + H + h_beam + h_stub - cover), layer="REBAR")
+        draw_line(target, (ox + x_center, y_splice_bot + crank_h * 2.0), (ox + x_center, oy + H_story + h_stub - cover), layer="REBAR")
 
     # -----------------------------------------------------------------------
     # 4. Transverse Reinforcement (Hoops & Ties)
@@ -533,7 +536,7 @@ def elevation_view(
         y_curr += so
 
     # (b) Central Region
-    while y_curr < oy + H - lo:
+    while y_curr < oy + Lu - lo:
         draw_line(target, (tie_x1, y_curr), (tie_x2, y_curr), layer="STIRRUP")
         if y_splice_bot <= y_curr <= y_splice_top:
             y_curr += so
@@ -541,21 +544,21 @@ def elevation_view(
             y_curr += s_mid
 
     # (c) Top Confinement Zone Lo
-    y_top_start = max(y_curr, oy + H - lo)
+    y_top_start = max(y_curr, oy + Lu - lo)
     y_curr = y_top_start
-    while y_curr <= oy + H - first_tie_offset:
+    while y_curr <= oy + Lu - first_tie_offset:
         draw_line(target, (tie_x1, y_curr), (tie_x2, y_curr), layer="STIRRUP")
         y_curr += so
 
     # (d) Hoops through Beam-Column Joint
-    y_joint = oy + H + so
-    while y_joint <= oy + H + h_beam - first_tie_offset:
+    y_joint = oy + Lu + so
+    while y_joint <= oy + H_story - first_tie_offset:
         draw_line(target, (tie_x1, y_joint), (tie_x2, y_joint), layer="STIRRUP")
         y_joint += s_joint
 
     # (e) Hoops in column stub above joint
-    y_stub = oy + H + h_beam + first_tie_offset
-    while y_stub <= oy + H + h_beam + h_stub - first_tie_offset:
+    y_stub = oy + H_story + first_tie_offset
+    while y_stub <= oy + H_story + h_stub - first_tie_offset:
         draw_line(target, (tie_x1, y_stub), (tie_x2, y_stub), layer="STIRRUP")
         y_stub += so
 
@@ -566,11 +569,11 @@ def elevation_view(
     draw_line(target, (ox - level_ext, oy), (ox + w + level_ext, oy), layer="LEVEL")
     draw_text(target, "LEVEL N (TOP OF SLAB / BEAM)", position=(ox + w + level_ext + (30.0 if is_metric else 1.5), oy), height=text_height * 0.85, layer="TEXT")
 
-    draw_line(target, (ox - level_ext, oy + H), (ox + w + level_ext, oy + H), layer="LEVEL")
-    draw_text(target, "BEAM SOFFIT", position=(ox + w + level_ext + (30.0 if is_metric else 1.5), oy + H), height=text_height * 0.85, layer="TEXT")
+    draw_line(target, (ox - level_ext, oy + Lu), (ox + w + level_ext, oy + Lu), layer="LEVEL")
+    draw_text(target, "BEAM SOFFIT", position=(ox + w + level_ext + (30.0 if is_metric else 1.5), oy + Lu), height=text_height * 0.85, layer="TEXT")
 
-    draw_line(target, (ox - level_ext, oy + H + h_beam), (ox + w + level_ext, oy + H + h_beam), layer="LEVEL")
-    draw_text(target, "LEVEL N+1 (FLOOR LEVEL)", position=(ox + w + level_ext + (30.0 if is_metric else 1.5), oy + H + h_beam), height=text_height * 0.85, layer="TEXT")
+    draw_line(target, (ox - level_ext, oy + H_story), (ox + w + level_ext, oy + H_story), layer="LEVEL")
+    draw_text(target, "LEVEL N+1 (FLOOR LEVEL)", position=(ox + w + level_ext + (30.0 if is_metric else 1.5), oy + H_story), height=text_height * 0.85, layer="TEXT")
 
     # -----------------------------------------------------------------------
     # 6. Dimension Chains (Left of Column)
@@ -591,24 +594,24 @@ def elevation_view(
     draw_dimension(
         target,
         (ox, oy + lo),
-        (ox, oy + H - lo),
-        location=(dim_x1, oy + H / 2.0),
-        text_override=_format_dim(H - 2.0 * lo, is_metric),
+        (ox, oy + Lu - lo),
+        location=(dim_x1, oy + Lu / 2.0),
+        text_override=_format_dim(Lu - 2.0 * lo, is_metric),
         layer="DIM_LINEAR",
     )
     draw_dimension(
         target,
-        (ox, oy + H - lo),
-        (ox, oy + H),
-        location=(dim_x1, oy + H - lo / 2.0),
+        (ox, oy + Lu - lo),
+        (ox, oy + Lu),
+        location=(dim_x1, oy + Lu - lo / 2.0),
         text_override=f"Lo = {_format_dim(lo, is_metric)}",
         layer="DIM_LINEAR",
     )
     draw_dimension(
         target,
-        (ox, oy + H),
-        (ox, oy + H + h_beam),
-        location=(dim_x1, oy + H + h_beam / 2.0),
+        (ox, oy + Lu),
+        (ox, oy + H_story),
+        location=(dim_x1, oy + Lu + h_beam / 2.0),
         text_override=_format_dim(h_beam, is_metric),
         layer="DIM_LINEAR",
     )
@@ -617,9 +620,9 @@ def elevation_view(
     draw_dimension(
         target,
         (ox, oy),
-        (ox, oy + H),
-        location=(dim_x2, oy + H / 2.0),
-        text_override=f"Lu = {_format_dim(H, is_metric)}",
+        (ox, oy + Lu),
+        location=(dim_x2, oy + Lu / 2.0),
+        text_override=f"Lu = {_format_dim(Lu, is_metric)}",
         layer="DIM_LINEAR",
     )
 
@@ -627,18 +630,18 @@ def elevation_view(
     draw_dimension(
         target,
         (ox, oy),
-        (ox, oy + H + h_beam),
-        location=(dim_x3, oy + (H + h_beam) / 2.0),
-        text_override=f"STORY H = {_format_dim(H + h_beam, is_metric)}",
+        (ox, oy + H_story),
+        location=(dim_x3, oy + H_story / 2.0),
+        text_override=f"STORY H = {_format_dim(H_story, is_metric)}",
         layer="DIM_LINEAR",
     )
 
     # Column Width at Top
     draw_dimension(
         target,
-        (ox, oy + H + h_beam + h_stub),
-        (ox + w, oy + H + h_beam + h_stub),
-        location=(ox + w / 2.0, oy + H + h_beam + h_stub + dim_offset * 0.8),
+        (ox, oy + H_story + h_stub),
+        (ox + w, oy + H_story + h_stub),
+        location=(ox + w / 2.0, oy + H_story + h_stub + dim_offset * 0.8),
         text_override=_format_dim(w, is_metric),
         layer="DIM_LINEAR",
     )
@@ -652,7 +655,7 @@ def elevation_view(
 
     # (a) Joint hoops callout
     so_joint_str = f"{s_joint:.0f}" if s_joint.is_integer() else f"{s_joint:.1f}"
-    pt_a = (tie_x2, oy + H + h_beam * 0.5)
+    pt_a = (tie_x2, oy + Lu + h_beam * 0.5)
     elbow_a = (ox + w + ann_elbow_dx, pt_a[1])
     landing_a = (elbow_a[0] + landing_w, elbow_a[1])
     draw_leader(
@@ -666,7 +669,7 @@ def elevation_view(
 
     # (b) Top Lo zone hoops callout
     so_str = f"{so:.0f}" if so.is_integer() else f"{so:.1f}"
-    pt_b = (tie_x2, oy + H - lo * 0.4)
+    pt_b = (tie_x2, oy + Lu - lo * 0.4)
     elbow_b = (ox + w + ann_elbow_dx, pt_b[1])
     landing_b = (elbow_b[0] + landing_w, elbow_b[1])
     draw_leader(
@@ -739,10 +742,10 @@ def elevation_view(
     if title is None:
         title = f"ELEVATION OF {column.name}"
     title_pos = (ox + w / 2.0, oy - h_beam - dim_offset * 1.5)
-    draw_text(target, title, position=title_pos, height=text_height * 1.2, layer="TITLE")
+    draw_text(target, title, position=title_pos, height=text_height, align="middle_center", layer="TITLE")
 
     scale_text = "SCALE 1:25" if is_metric else 'SCALE: 1/2" = 1\'-0"'
-    draw_text(target, scale_text, position=(ox + w / 2.0, title_pos[1] - text_height * 1.4), height=text_height * 0.75, layer="TEXT")
+    draw_text(target, scale_text, position=(ox + w / 2.0, title_pos[1] - text_height * 1.4), height=text_height * 0.75, align="middle_center", layer="TEXT")
 
     # -----------------------------------------------------------------------
     # 9. ACI 318 Seismic Detailing General Notes Block
@@ -771,13 +774,16 @@ def elevation_view(
     min_x = dim_x3 - dim_offset * 0.8
     max_x = landing_c[0] + leader_text_width + dim_offset
     min_y = notes_y - len(notes) * text_height * 1.5
-    max_y = oy + H + h_beam + h_stub + dim_offset * 1.5
+    max_y = oy + H_story + h_stub + dim_offset * 1.5
 
     refs: dict[str, Any] = {
         "origin": (ox, oy),
         "elevation_origin": (ox, oy),
         "width": w,
-        "height": H,
+        "height": H_story,
+        "story_height": H_story,
+        "clear_height": Lu,
+        "beam_depth": h_beam,
         "lo": lo,
         "so": so,
         "l_splice": l_splice,
@@ -880,4 +886,342 @@ def drawing(
     return result
 
 
-__all__ = ["section_view", "elevation_view", "drawing"]
+DEFAULT_GENERAL_NOTES: tuple[str, ...] = (
+    "1. DESIGN SPECIFICATIONS: ACI 318-19 (STRUCTURAL CONCRETE) & ASCE 7-22.",
+    "2. CONCRETE GRADES (28-DAY CYLINDER COMPRESSIVE STRENGTH f'c):",
+    "   - COLUMNS & BEAMS: f'c = 28 MPa (4000 psi), NORMAL WEIGHT CONCRETE",
+    "   - FOOTINGS & SLABS: f'c = 28 MPa (4000 psi)",
+    "   - PLAIN CONCRETE LEVELLING COURSE (PCC): M10 (10 MPa, 75mm THICK)",
+    "3. REINFORCING STEEL: ASTM A615 / A706 GRADE 60 (fy = 420 MPa / 60 ksi).",
+    "4. NOMINAL CLEAR CONCRETE COVER TO MAIN REINFORCEMENT:",
+    "   - FOOTINGS CAST AGAINST EARTH: 75 mm (3.0 in.)",
+    "   - COLUMNS & BEAMS (TO OUTER TIES/STIRRUPS): 40 mm (1.5 in.)",
+    "   - SLABS & STAIRCASES: 20 mm (0.75 in.)",
+    "5. DEVELOPMENT & SPLICES: MINIMUM CLASS B TENSION LAP SPLICE Ld = 48*db.",
+    "   COLUMN SPLICES PERMITTED ONLY IN MIDDLE HALF OF STORY CLEAR HEIGHT.",
+    "6. SEISMIC HOOKS: ALL TIES & STIRRUPS SHALL HAVE 135° HOOKS (>= 6*db EXTENSION).",
+    "7. FOUNDATIONS: NET ALLOWABLE SOIL BEARING CAPACITY = 200 kPa (4.0 ksf).",
+    "8. GENERAL: ALL DIMENSIONS IN MILLIMETERS UNLESS NOTED. DO NOT SCALE WRITTEN DRAWINGS.",
+)
+
+DEFAULT_GENERAL_NOTES_IMPERIAL: tuple[str, ...] = (
+    "1. DESIGN SPECIFICATIONS: ACI 318-19 (STRUCTURAL CONCRETE) & ASCE 7-22.",
+    "2. CONCRETE GRADES (28-DAY CYLINDER COMPRESSIVE STRENGTH f'c):",
+    "   - COLUMNS & BEAMS: f'c = 4000 psi (28 MPa), NORMAL WEIGHT CONCRETE",
+    "   - FOOTINGS & SLABS: f'c = 4000 psi (28 MPa)",
+    "   - PLAIN CONCRETE LEVELLING COURSE (PCC): 1500 psi (3 in. THICK)",
+    "3. REINFORCING STEEL: ASTM A615 / A706 GRADE 60 (fy = 60 ksi / 420 MPa).",
+    "4. NOMINAL CLEAR CONCRETE COVER TO MAIN REINFORCEMENT:",
+    "   - FOOTINGS CAST AGAINST EARTH: 3.0 in. (75 mm)",
+    "   - COLUMNS & BEAMS (TO OUTER TIES/STIRRUPS): 1.5 in. (40 mm)",
+    "   - SLABS & STAIRCASES: 0.75 in. (20 mm)",
+    "5. DEVELOPMENT & SPLICES: MINIMUM CLASS B TENSION LAP SPLICE Ld = 48*db.",
+    "   COLUMN SPLICES PERMITTED ONLY IN MIDDLE HALF OF STORY CLEAR HEIGHT.",
+    "6. SEISMIC HOOKS: ALL TIES & STIRRUPS SHALL HAVE 135° HOOKS (>= 6*db EXTENSION).",
+    "7. FOUNDATIONS: NET ALLOWABLE SOIL BEARING CAPACITY = 4.0 ksf (200 kPa).",
+    "8. GENERAL: ALL DIMENSIONS IN INCHES UNLESS NOTED. DO NOT SCALE WRITTEN DRAWINGS.",
+)
+
+
+def column_schedule_view(
+    target: Any,
+    schedule_data: ColumnScheduleData,
+    *,
+    origin: tuple[float, float] = (0.0, 0.0),
+    scale: Any = None,
+    unit: Any = None,
+) -> dict[str, Any]:
+    """Draw a professional multi-story Column Schedule table and companion typical column elevation.
+
+    The view includes:
+    1. Multi-story Column Schedule Table:
+       - Header row: "STORY / LEVEL", "COLUMN C1", "COLUMN C2", ...
+       - Story rows: ordered strictly from bottom to top (STORY 1 at bottom, STORY 2 above).
+       - In each cell:
+         * Centered column cross-section outline.
+         * Double-line perimeter tie with 135° seismic hooks.
+         * Longitudinal rebar circles.
+         * Dimension strings for cross-section width and depth.
+         * Clean text callouts below: dimensions, bar quantity/size, and tie spacing.
+       - Clean table borders and interior cell grid lines.
+       - Master underlined table title "COLUMN SCHEDULE".
+    2. Typical Ground Floor Column Elevation:
+       - Drawn to the right of the table with clear margin.
+       - Shows lap splice, confinement zone Lo, tie spacing, level lines, and dimensions.
+    3. ACI 318 Seismic Detailing General Notes:
+       - Drawn to the right of the elevation view in an architectural notes box.
+
+    Returns
+    -------
+    dict[str, Any]
+        Dictionary with view bounding boxes and drawing metadata.
+    """
+    ox, oy = origin
+    is_metric = schedule_data.is_metric
+
+    from struct_draw.core.units import DrawingScale, DrawingUnit, SCALE_1_50, SCALE_1_4_IN
+    from struct_draw.style.annotation_config import DEFAULT_ANNOTATION_CONFIG
+    from struct_draw.core.stirrup import StirrupGeometry
+
+    d_scale = scale or schedule_data.scale or (SCALE_1_50 if is_metric else SCALE_1_4_IN)
+    d_unit = unit or schedule_data.unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
+    txt_sz = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
+    hdr_txt_sz = txt_sz * 1.25
+    title_txt_sz = txt_sz * 1.6
+    dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
+
+    stories = list(schedule_data.stories) if schedule_data.stories else ["STORY 1", "STORY 2"]
+    if schedule_data.column_marks:
+        col_marks = list(schedule_data.column_marks)
+    else:
+        found_marks = sorted({k[1] for k in schedule_data.columns.keys()}) if schedule_data.columns else []
+        col_marks = found_marks if found_marks else ["C1", "C2", "C3", "C4", "C5", "C6"]
+
+    n_rows = len(stories)
+    n_cols = len(col_marks)
+
+    # Determine maximum member width/depth to size cell generously
+    max_w = 400.0 if is_metric else 16.0
+    max_d = 400.0 if is_metric else 16.0
+    for col in schedule_data.columns.values():
+        max_w = max(max_w, col.section.width_in)
+        max_d = max(max_d, col.section.depth_in)
+
+    w_story = max(2400.0 if is_metric else 96.0, txt_sz * 14.0)
+    w_cell = max(2400.0 if is_metric else 96.0, max_w + (1200.0 if is_metric else 48.0))
+    h_hdr = max(900.0 if is_metric else 36.0, hdr_txt_sz * 3.5)
+    h_row = max(2600.0 if is_metric else 104.0, max_d + (1600.0 if is_metric else 64.0))
+
+    table_w = w_story + n_cols * w_cell
+    table_h = n_rows * h_row + h_hdr
+
+    table_x0 = ox
+    table_y0 = oy - table_h
+    table_x1 = ox + table_w
+    table_y1 = oy
+
+    # 1. Outer Border & Grid Lines
+    draw_rectangle(target, origin=(table_x0, table_y0), width=table_w, height=table_h, close=True, layer="BORDER")
+
+    # Horizontal row divider lines
+    for j in range(1, n_rows):
+        y_line = table_y0 + j * h_row
+        draw_line(target, (table_x0, y_line), (table_x1, y_line), layer="TABLE")
+
+    # Header bottom divider line & accent line
+    y_hdr_line = table_y0 + n_rows * h_row
+    draw_line(target, (table_x0, y_hdr_line), (table_x1, y_hdr_line), layer="TABLE")
+    accent_off = 35.0 if is_metric else 1.4
+    draw_line(target, (table_x0, y_hdr_line - accent_off), (table_x1, y_hdr_line - accent_off), layer="TABLE")
+
+    # Vertical column divider lines
+    draw_line(target, (table_x0 + w_story, table_y0), (table_x0 + w_story, table_y1), layer="TABLE")
+    for i in range(1, n_cols):
+        x_line = table_x0 + w_story + i * w_cell
+        draw_line(target, (x_line, table_y0), (x_line, table_y1), layer="TABLE")
+
+    # 2. Header Row Content
+    y_hdr_mid = y_hdr_line + h_hdr / 2.0
+    draw_text(target, "STORY / LEVEL", position=(table_x0 + w_story / 2.0, y_hdr_mid), height=hdr_txt_sz, align="middle_center", layer="HEADER")
+    for i, mark in enumerate(col_marks):
+        cx_hdr = table_x0 + w_story + i * w_cell + w_cell / 2.0
+        draw_text(target, f"COLUMN {mark}", position=(cx_hdr, y_hdr_mid), height=hdr_txt_sz, align="middle_center", layer="HEADER")
+
+    # 3. Story Rows Content (bottom to top: stories[0] at bottom row, stories[1] above)
+    for j, story in enumerate(stories):
+        y_bot = table_y0 + j * h_row
+        y_mid = y_bot + h_row / 2.0
+
+        # Story label in column 0
+        draw_text(target, str(story).upper(), position=(table_x0 + w_story / 2.0, y_mid), height=hdr_txt_sz, align="middle_center", layer="HEADER")
+
+        # Each column mark
+        for i, mark in enumerate(col_marks):
+            cx = table_x0 + w_story + i * w_cell + w_cell / 2.0
+            cy_sec = y_bot + h_row * 0.58
+
+            # Lookup ColumnData
+            col_data = schedule_data.columns.get((story, mark))
+            if col_data is None:
+                for (s_k, m_k), c_val in schedule_data.columns.items():
+                    if str(s_k).strip().lower() == str(story).strip().lower() and str(m_k).strip().lower() == str(mark).strip().lower():
+                        col_data = c_val
+                        break
+            if col_data is None and schedule_data.typical_column:
+                if str(mark).strip().lower() in str(schedule_data.typical_column.name).strip().lower():
+                    col_data = schedule_data.typical_column
+
+            if col_data is not None:
+                w = col_data.section.width_in
+                d = col_data.section.depth_in
+                ox_sec = cx - w / 2.0
+                oy_sec = cy_sec - d / 2.0
+
+                # Concrete outline
+                draw_rectangle(target, origin=(ox_sec, oy_sec), width=w, height=d, close=True, layer="COLUMN")
+
+                # Stirrup
+                cover = col_data.cover_in if getattr(col_data, "cover_in", None) else (40.0 if is_metric else 1.5)
+                tie_size = getattr(col_data.stirrups, "size", "T10" if is_metric else "#3")
+                tie_dia = _bar_diameter(tie_size, is_metric)
+                main_bar_size = col_data.longitudinal_bars[0].size if col_data.longitudinal_bars else ("T20" if is_metric else "#8")
+                main_bar_dia = _bar_diameter(main_bar_size, is_metric)
+                hook_len = max(6.0 * main_bar_dia, 75.0 if is_metric else 3.0)
+
+                sw = max(1.0, w - 2.0 * cover)
+                sh = max(1.0, d - 2.0 * cover)
+                sx0 = ox_sec + cover
+                sy0 = oy_sec + cover
+
+                st_geom = StirrupGeometry(
+                    diameter=tie_dia,
+                    width=sw,
+                    depth=sh,
+                    origin=(sx0, sy0),
+                    hook_length=hook_len,
+                    hook_corner="top_left",
+                    corner_bar_diameter=main_bar_dia,
+                    double_line=True,
+                    layer="STIRRUP",
+                )
+                st_geom.draw(target)
+
+                # Rebar circles
+                n_bars = sum(b.quantity for b in col_data.longitudinal_bars) if col_data.longitudinal_bars else 8
+                bar_coords = _compute_rebar_coords(n_bars, w, d, cover, tie_dia=tie_dia, bar_dia=main_bar_dia)
+                for bx, by in bar_coords:
+                    draw_rebar_circle(target, (ox_sec + bx, oy_sec + by), diameter=main_bar_dia, layer="REBAR")
+
+                # Dimensions: width (bottom) and depth (left)
+                draw_dimension(
+                    target,
+                    (ox_sec, oy_sec),
+                    (ox_sec + w, oy_sec),
+                    location=(cx, oy_sec - dim_offset * 0.7),
+                    text_override=_format_dim(w, is_metric),
+                    layer="DIM_LINEAR",
+                )
+                draw_dimension(
+                    target,
+                    (ox_sec, oy_sec),
+                    (ox_sec, oy_sec + d),
+                    location=(ox_sec - dim_offset * 0.7, cy_sec),
+                    text_override=_format_dim(d, is_metric),
+                    layer="DIM_LINEAR",
+                )
+
+                # Text Callouts below cross section
+                spacing = col_data.stirrups.spacing_in if col_data.stirrups.spacing_in > 0 else (150.0 if is_metric else 6.0)
+                sp_str = _format_dim(spacing, is_metric)
+                unit_suf = "mm c/c" if is_metric else '" c/c'
+
+                y_txt1 = y_bot + h_row * 0.22
+                y_txt2 = y_bot + h_row * 0.14
+                y_txt3 = y_bot + h_row * 0.06
+
+                draw_text(target, f"{_format_dim(w, is_metric)} x {_format_dim(d, is_metric)}", position=(cx, y_txt1), height=txt_sz * 0.95, align="middle_center", layer="TEXT")
+                draw_text(target, f"{n_bars} - {main_bar_size}", position=(cx, y_txt2), height=txt_sz * 0.95, align="middle_center", layer="TEXT")
+                draw_text(target, f"{tie_size} @ {sp_str} {unit_suf}", position=(cx, y_txt3), height=txt_sz * 0.85, align="middle_center", layer="TEXT")
+            else:
+                draw_text(target, "—", position=(cx, y_mid), height=txt_sz * 1.5, align="middle_center", layer="TEXT")
+
+    # 4. Schedule Title above Header
+    title_text = schedule_data.title or "COLUMN SCHEDULE"
+    y_title = table_y1 + (450.0 if is_metric else 18.0)
+    x_title = table_x0 + table_w / 2.0
+    draw_text(target, title_text, position=(x_title, y_title), height=title_txt_sz, align="middle_center", layer="TITLE")
+    t_under_len = max(len(title_text) * title_txt_sz * 0.85, 3200.0 if is_metric else 125.0)
+    draw_line(target, (x_title - t_under_len / 2.0, y_title - title_txt_sz * 0.5), (x_title + t_under_len / 2.0, y_title - title_txt_sz * 0.5), layer="TITLE")
+
+    # 5. Right Side: Typical Ground Floor Column Elevation
+    margin_x = 2200.0 if is_metric else 88.0
+    elev_x = table_x1 + margin_x
+    elev_y = table_y0
+
+    typical_col = schedule_data.typical_column
+    if typical_col is None and schedule_data.columns:
+        typical_col = next(iter(schedule_data.columns.values()))
+
+    refs_elev = None
+    if typical_col is not None:
+        col_title = f"TYPICAL GROUND FLOOR COLUMN ELEVATION ({typical_col.name})"
+        refs_elev = elevation_view(target, typical_col, origin=(elev_x, elev_y), title=col_title, scale=d_scale, unit=d_unit)
+        elev_bbox = refs_elev["bounding_box"]
+    else:
+        elev_bbox = (elev_x, elev_y, elev_x + (1500.0 if is_metric else 60.0), elev_y + table_h)
+
+    # 6. General Notes Block
+    notes_x = elev_bbox[2] + (1500.0 if is_metric else 60.0)
+    notes_w = 7800.0 if is_metric else 300.0
+    if schedule_data.notes:
+        notes_lines = schedule_data.notes
+    else:
+        notes_lines = DEFAULT_GENERAL_NOTES if is_metric else DEFAULT_GENERAL_NOTES_IMPERIAL
+
+    pad_x = 250.0 if is_metric else 10.0
+    content_w = notes_w - pad_x * 2.2
+    note_txt_sz = txt_sz * 0.72
+    line_pitch = note_txt_sz * 1.55
+    item_gap = note_txt_sz * 0.65
+
+    # Wrap any overly long note lines to ensure they fit cleanly inside content_w
+    char_w = max(1.0, note_txt_sz * 0.62)
+    max_chars = max(40, int(content_w / char_w))
+
+    wrapped_lines: list[str] = []
+    for line_str in notes_lines:
+        line_str = line_str.rstrip()
+        if not line_str:
+            continue
+        # Add a subtle paragraph break before major numbered sections (e.g. "2.", "3.", etc.)
+        if wrapped_lines and line_str[:3].rstrip().endswith(".") and line_str[0].isdigit():
+            wrapped_lines.append("")
+        indent = ""
+        if line_str.startswith("   - "):
+            indent = "     "
+        elif line_str.startswith("   "):
+            indent = "   "
+        sub = textwrap.wrap(line_str, width=max_chars, subsequent_indent=indent)
+        wrapped_lines.extend(sub if sub else [line_str])
+
+    total_lines = len(wrapped_lines)
+    header_h = max(hdr_txt_sz * 2.4, 500.0 if is_metric else 20.0)
+    top_gap = txt_sz * 1.6 if is_metric else 6.0
+    bottom_pad = txt_sz * 2.2 if is_metric else 8.0
+    body_h = total_lines * line_pitch
+    notes_h = header_h + top_gap + body_h + bottom_pad
+    notes_y1 = table_y1
+    notes_y0 = notes_y1 - notes_h
+
+    # Draw border rectangle and header divider line
+    draw_rectangle(target, origin=(notes_x, notes_y0), width=notes_w, height=notes_h, close=True, layer="BORDER")
+    y_div = notes_y1 - header_h
+    draw_line(target, (notes_x, y_div), (notes_x + notes_w, y_div), layer="BORDER")
+    draw_text(target, "GENERAL NOTES", position=(notes_x + notes_w / 2.0, (notes_y1 + y_div) / 2.0), height=hdr_txt_sz, align="middle_center", layer="HEADER")
+
+    # Draw all notes as a single cohesive MTEXT entity so lines flow sequentially with zero overlapping
+    full_notes_text = "\n".join(wrapped_lines)
+    draw_mtext(
+        target,
+        full_notes_text,
+        position=(notes_x + pad_x, y_div - top_gap),
+        width=content_w,
+        height=note_txt_sz,
+        layer="TEXT",
+    )
+
+    overall_min_x = table_x0
+    overall_max_x = notes_x + notes_w + (500.0 if is_metric else 20.0)
+    overall_min_y = min(table_y0, elev_bbox[1], notes_y0)
+    overall_max_y = max(y_title + title_txt_sz, elev_bbox[3], notes_y1)
+
+    return {
+        "bounding_box": (overall_min_x, overall_min_y, overall_max_x, overall_max_y),
+        "table_bbox": (table_x0, table_y0, table_x1, table_y1),
+        "elevation_bbox": elev_bbox,
+        "notes_bbox": (notes_x, notes_y0, notes_x + notes_w, notes_y1),
+    }
+
+
+__all__ = ["section_view", "elevation_view", "drawing", "column_schedule_view", "DEFAULT_GENERAL_NOTES", "DEFAULT_GENERAL_NOTES_IMPERIAL"]
+

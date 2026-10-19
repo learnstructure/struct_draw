@@ -147,11 +147,11 @@ def section_view(
         d_scale = scale or (SCALE_1_25 if is_metric else SCALE_1_IN)
         txt_sz = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
         st_sz = DEFAULT_ANNOTATION_CONFIG.dim_text_height(d_scale, d_unit)
-        title_sz = DEFAULT_ANNOTATION_CONFIG.title_height(d_scale, d_unit)
+        title_sz = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
     else:
         txt_sz = 100.0 * s
         st_sz = 80.0 * s
-        title_sz = 130.0 * s
+        title_sz = 100.0 * s
 
     pb_w = combined_footing.plinth_beam_width_in or (230.0 if is_metric else 9.0)
     pb_h = combined_footing.plinth_beam_depth_in or (350.0 if is_metric else 14.0)
@@ -243,21 +243,25 @@ def section_view(
     # 5. Level Lines (GL & PL)
     gl_y = fd + oy
     pl_y = fd + pl + oy
-    level_ext = 1400.0 if is_metric else 50.0
+    dim_off = (DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit) if (scale is not None or unit is not None) else 300.0)
+    level_ext = max(1800.0 if is_metric else 72.0, dim_off * 4.5)
     draw_line(target, (col1_left, gl_y), (col1_left - level_ext, gl_y), layer="Level")
+    txt_x = col1_left - level_ext + (50.0 if is_metric else 2.0)
     draw_text(
         target,
         "Ground Lvl.",
-        position=(col1_left - level_ext, gl_y + txt_sz * 0.2),
-        height=txt_sz,
+        position=(txt_x, gl_y + st_sz * 0.25),
+        height=st_sz,
+        align="bottom_left",
         layer="Text",
     )
     draw_line(target, (col1_left, pl_y), (col1_left - level_ext, pl_y), layer="Level")
     draw_text(
         target,
         "Plinth Lvl.",
-        position=(col1_left - level_ext, pl_y + txt_sz * 0.2),
-        height=txt_sz,
+        position=(txt_x, pl_y + st_sz * 0.25),
+        height=st_sz,
+        align="bottom_left",
         layer="Text",
     )
 
@@ -542,13 +546,14 @@ def section_view(
 
     # View title (placed below all dimensions)
     section_title = title or f"Section of {combined_footing.name} along CX{combined_footing.name}"
-    title_x = (x_left + x_right) / 2.0 - len(section_title) * title_sz * 0.28
-    title_y = (dim_y - 300.0 * s) - (250.0 if is_metric else 10.0)
+    title_x = (x_left + x_right) / 2.0
+    title_y = (dim_y - 300.0 * s) - (200.0 if is_metric else 8.0)
     draw_text(
         target,
         section_title,
         position=(title_x, title_y),
         height=title_sz,
+        align="middle_center",
         layer="Text",
     )
 
@@ -799,8 +804,9 @@ def plan_view(
     draw_text(
         target,
         plan_title,
-        position=(cx1 + col_sp / 2.0 - 200.0 * s, y_bot - 650.0 * s),
+        position=((x_left + x_right) / 2.0, y_bot - 450.0 * s),
         height=txt_sz,
+        align="middle_center",
         layer="Text",
     )
 

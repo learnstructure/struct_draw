@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 
 
 # ---------------------------------------------------------------------------
@@ -967,11 +967,56 @@ class ColumnData:
     schedule: Sequence[ScheduleRow] = field(default_factory=tuple)
     scale: Any = None
     unit: Any = None
+    beam_depth_in: float | None = None
 
     @property
     def is_metric(self) -> bool:
         """True if the column dimensions are specified in SI metric units (mm)."""
         return _resolve_unit_is_metric(self.unit, self.section.width_in >= 100.0 or self.section.depth_in >= 100.0)
+
+
+@dataclass(frozen=True)
+class ColumnScheduleData:
+    """Multi-story column schedule table data and companion typical elevation view.
+
+    Attributes
+    ----------
+    title : str
+        Schedule table title, e.g. ``"COLUMN SCHEDULE"``.
+    stories : tuple[str, ...]
+        Story identifiers ordered from bottom to top, e.g. ``("STORY 1", "STORY 2")``.
+    column_marks : tuple[str, ...]
+        Column identifiers/marks, e.g. ``("C1", "C2", "C3", "C4", "C5", "C6")``.
+    columns : Mapping[tuple[str, str], ColumnData]
+        Dictionary mapping ``(story, column_mark) -> ColumnData``.
+    typical_column : ColumnData | None
+        Representative column data for drawing typical ground-floor column elevation.
+    notes : tuple[str, ...]
+        General seismic and detailing notes for columns.
+    scale : Any
+        Drawing scale for annotations and dimensions.
+    unit : Any
+        Drawing unit (DrawingUnit.MM or DrawingUnit.IN).
+    """
+
+    title: str = "COLUMN SCHEDULE"
+    stories: tuple[str, ...] = ()
+    column_marks: tuple[str, ...] = ()
+    columns: Mapping[tuple[str, str], ColumnData] = field(default_factory=dict)
+    typical_column: ColumnData | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+    scale: Any = None
+    unit: Any = None
+
+    @property
+    def is_metric(self) -> bool:
+        """True if the column schedule is in SI metric units (mm)."""
+        if self.typical_column is not None:
+            return self.typical_column.is_metric
+        if self.columns:
+            first_col = next(iter(self.columns.values()))
+            return first_col.is_metric
+        return _resolve_unit_is_metric(self.unit, True)
 
 
 @dataclass(frozen=True)
@@ -1693,6 +1738,7 @@ __all__ = [
     "FootingData",
     "CombinedFootingData",
     "ColumnData",
+    "ColumnScheduleData",
     "StaircaseData",
     "SlabData",
     "FrameNode",

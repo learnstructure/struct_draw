@@ -461,14 +461,9 @@ def plan_view(
     draw_text(
         target,
         plan_title.upper(),
-        position=((x_min + x_max) / 2.0 - len(plan_title) * text_size * 0.3, title_y),
+        position=((x_min + x_max) / 2.0, title_y),
         height=text_size * 1.4,
-        layer="TITLE",
-    )
-    draw_line(
-        target,
-        ((x_min + x_max) / 2.0 - len(plan_title) * text_size * 0.35, title_y - text_size * 0.3),
-        ((x_min + x_max) / 2.0 + len(plan_title) * text_size * 0.35, title_y - text_size * 0.3),
+        align="middle_center",
         layer="TITLE",
     )
 
@@ -753,14 +748,9 @@ def elevation_view(
     draw_text(
         target,
         elev_title.upper(),
-        position=((x_min + x_max) / 2.0 - len(elev_title) * text_size * 0.3, title_y),
+        position=((x_min + x_max) / 2.0, title_y),
         height=text_size * 1.4,
-        layer="TITLE",
-    )
-    draw_line(
-        target,
-        ((x_min + x_max) / 2.0 - len(elev_title) * text_size * 0.35, title_y - text_size * 0.3),
-        ((x_min + x_max) / 2.0 + len(elev_title) * text_size * 0.35, title_y - text_size * 0.3),
+        align="middle_center",
         layer="TITLE",
     )
 

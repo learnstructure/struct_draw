@@ -40,7 +40,7 @@ def plan_view(
     d_scale = scale or (SCALE_1_50 if is_metric else SCALE_1_4_IN)
 
     dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
-    title_h = DEFAULT_ANNOTATION_CONFIG.title_height(d_scale, d_unit)
+    title_h = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
     dim_style = "DIM_DETAIL" if is_metric else "Linear"
 
     refs: dict[str, Any] = {"origin": (ox, oy)}
@@ -85,7 +85,7 @@ def plan_view(
 
     if title is None:
         title = f"Slab Plan — {slab.name}"
-    draw_text(target, title, position=(ox, oy + W + dim_offset * 0.8), height=title_h, layer="TEXT")
+    draw_text(target, title, position=(ox + L / 2.0, oy + W + dim_offset * 0.8), height=title_h, align="middle_center", layer="TEXT")
 
     refs.update({"plan_origin": (ox, oy)})
     return refs
@@ -117,7 +117,7 @@ def section_view(
     d_scale = scale or (SCALE_1_20 if is_metric else SCALE_1_IN)
 
     dim_offset = DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit)
-    title_h = DEFAULT_ANNOTATION_CONFIG.title_height(d_scale, d_unit)
+    title_h = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
     dim_style = "DIM_DETAIL" if is_metric else "Linear"
 
     refs: dict[str, Any] = {"origin": (ox, oy)}
@@ -149,7 +149,7 @@ def section_view(
 
     if title is None:
         title = f"Slab Section — {slab.name}"
-    draw_text(target, title, position=(ox, oy + t + dim_offset * 0.8), height=title_h, layer="TEXT")
+    draw_text(target, title, position=(ox + L / 2.0, oy + t + dim_offset * 0.8), height=title_h, align="middle_center", layer="TEXT")
 
     refs.update({"section_origin": (ox, oy)})
     return refs

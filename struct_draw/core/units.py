@@ -196,7 +196,6 @@ SCALE_1_10 = DrawingScale.metric(10.0, "1:10")
 SCALE_1_8_IN = DrawingScale.imperial('1/8" = 1\'-0"')   # 1:96
 SCALE_1_4_IN = DrawingScale.imperial('1/4" = 1\'-0"')   # 1:48
 SCALE_1_2_IN = DrawingScale.imperial('1/2" = 1\'-0"')   # 1:24
-SCALE_1_24 = SCALE_1_2_IN                               # 1:24 alias
 SCALE_3_4_IN = DrawingScale.imperial('3/4" = 1\'-0"')   # 1:16
 SCALE_1_IN = DrawingScale.imperial('1" = 1\'-0"')       # 1:12
 SCALE_3_IN = DrawingScale.imperial('3" = 1\'-0"')       # 1:4

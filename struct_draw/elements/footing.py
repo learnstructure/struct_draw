@@ -154,12 +154,12 @@ def section_view(
         d_unit = unit or (DrawingUnit.MM if is_metric else DrawingUnit.IN)
         d_scale = scale or (SCALE_1_25 if is_metric else SCALE_1_IN)
         txt_sz = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
-        hdr_txt_sz = DEFAULT_ANNOTATION_CONFIG.title_height(d_scale, d_unit)
+        hdr_txt_sz = DEFAULT_ANNOTATION_CONFIG.text_height(d_scale, d_unit)
         st_sz = DEFAULT_ANNOTATION_CONFIG.dim_text_height(d_scale, d_unit)
         arr_sz = DEFAULT_ANNOTATION_CONFIG.arrow_size(d_scale, d_unit)
     else:
         txt_sz = 100.0 if is_metric else 4.0
-        hdr_txt_sz = 130.0 if is_metric else 5.0
+        hdr_txt_sz = 100.0 if is_metric else 4.0
         st_sz = 80.0 if is_metric else 3.0
         arr_sz = 50.0 if is_metric else 2.0
     dot_r = 7.0 if is_metric else max(bar_dia / 2.0, 0.25)
@@ -244,14 +244,16 @@ def section_view(
     # 6. Level Lines: Ground Level (GL) and Plinth Level (PL)
     gl_y = fd + oy
     pl_y = fd + pl + oy
-    level_ext = 1400.0 if is_metric else 50.0
+    dim_off = (DEFAULT_ANNOTATION_CONFIG.dim_offset(d_scale, d_unit) if (scale is not None or unit is not None) else 300.0)
+    level_ext = max(1800.0 if is_metric else 72.0, dim_off * 4.5)
     p_GL = (-cw / 2.0 + ox, gl_y)
     p_PL = (-cw / 2.0 + ox, pl_y)
     draw_line(target, p_GL, (p_GL[0] - level_ext, p_GL[1]), layer="Level")
     draw_line(target, p_PL, (p_PL[0] - level_ext, p_PL[1]), layer="Level")
 
-    draw_text(target, "Ground Lvl.", position=(p_GL[0] - level_ext, p_GL[1] + txt_sz * 0.2), height=txt_sz, layer="Text")
-    draw_text(target, "Plinth Lvl.", position=(p_PL[0] - level_ext, p_PL[1] + txt_sz * 0.2), height=txt_sz, layer="Text")
+    txt_x = p_GL[0] - level_ext + (50.0 if is_metric else 2.0)
+    draw_text(target, "Ground Lvl.", position=(txt_x, p_GL[1] + st_sz * 0.25), height=st_sz, align="bottom_left", layer="Text")
+    draw_text(target, "Plinth Lvl.", position=(txt_x, p_PL[1] + st_sz * 0.25), height=st_sz, align="bottom_left", layer="Text")
 
     # 7. Rebar Details
     # Bottom main rebar line with hooks
@@ -513,14 +515,15 @@ def section_view(
     draw_text(
         target,
         title,
-        position=(-550.0 * s + ox, -650.0 * s + oy),
-        height=hdr_txt_sz,
+        position=(ox, -1000.0 * s + oy),
+        height=txt_sz,
+        align="middle_center",
         layer="Text",
     )
 
     min_x = min(-cw / 2.0 - level_ext, -L / 2.0 - 700.0 * s) + ox
     max_x = max(L / 2.0 + 400.0 * s, cw / 2.0 + 2000.0 * s) + ox
-    min_y = min(-pcc_thick - soling_thick, -650.0 * s - hdr_txt_sz * 1.5) + oy
+    min_y = min(-pcc_thick - soling_thick, -1000.0 * s - txt_sz * 2.0) + oy
     max_y = col_y_top + 200.0 * s
 
     return {
@@ -726,14 +729,15 @@ def plan_view(
     draw_text(
         target,
         title,
-        position=(foot_1[0] + 100.0 * s, foot_1[1] - 450.0 * s),
+        position=(pcx, foot_1[1] - 500.0 * s),
         height=txt_sz,
+        align="middle_center",
         layer="Text",
     )
 
     min_x = foot_1[0] - max(cen_ext + 150.0 * s, 300.0 * s)
     max_x = foot_2[0] + max(cen_ext + 150.0 * s, 350.0 * s)
-    min_y = foot_1[1] - 450.0 * s - txt_sz * 1.5
+    min_y = foot_1[1] - 500.0 * s - txt_sz * 1.5
     max_y = foot_2[1] + max(cen_ext, 250.0 * s)
 
     return {

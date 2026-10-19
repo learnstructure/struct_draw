@@ -67,12 +67,11 @@ from struct_draw.core.units import (
     SCALE_1_50,   # 1:50 (Elevations, sections)
     SCALE_1_30,   # 1:30 (Beam cross-sections)
     SCALE_1_25,   # 1:25 (Reinforcement detailing)
-    SCALE_1_24,   # 1:24 / 1/2" = 1'-0" (Imperial beam cross-sections)
     SCALE_1_20,   # 1:20 (Member cross-sections)
     SCALE_1_10,   # 1:10 (Connection details)
     SCALE_1_8_IN, # 1/8" = 1'-0" (Imperial plans)
     SCALE_1_4_IN, # 1/4" = 1'-0" (Imperial elevations)
-    SCALE_1_2_IN, # 1/2" = 1'-0" (Imperial details / footings)
+    SCALE_1_2_IN, # 1/2" = 1'-0" (Imperial details / footings / cross-sections)
     SCALE_1_IN,   # 1" = 1'-0" (Imperial details)
 )
 
@@ -93,7 +92,7 @@ When `scale` is not explicitly specified, `struct_draw` automatically applies th
 | **Footings (Spread / Combined)**| `SCALE_1_25` ($1:25$) | `SCALE_1_2_IN` ($1/2"=1'-0"$) | Footing plan and section views |
 | **Staircases** | `SCALE_1_25` ($1:25$) | `SCALE_1_IN` ($1"=1'-0"$) | Flight elevation, landing joints, steps |
 | **Slab Plan** | `SCALE_1_50` ($1:50$) | `SCALE_1_4_IN` ($1/4"=1'-0"$) | Slab panel layouts |
-| **Beam Cross-Sections** | `SCALE_1_30` ($1:30$) | `SCALE_1_24` ($1/2"=1'-0"$) | Beam cross-sections with rebar callouts |
+| **Beam Cross-Sections** | `SCALE_1_30` ($1:30$) | `SCALE_1_2_IN` ($1/2"=1'-0"$) | Beam cross-sections with rebar callouts |
 | **Member Cross-Sections** | `SCALE_1_20` ($1:20$) | `SCALE_1_IN` ($1"=1'-0"$) | Column, wall, and detail cross-sections |
 
 You can query or inspect defaults programmatically using:
