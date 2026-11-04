@@ -337,6 +337,8 @@ output["drawing"].saveas("portal_frame_detailing.dxf")
 
 A runnable example lives at `struct_agent/examples/end_to_end_ecosystem_pipeline.py` and `struct_agent/examples/demo_pipeline.py`.
 
+**General notes** of the detailing sheet (`struct_draw.elements.column.general_notes`) state the inputs the design was made with, read from `DesignResult.inputs` (`DesignInputs`, model units): the concrete f'c and weight class, the reinforcement fy, the clear covers of the members and footings, and the allowable soil bearing pressure. A pressure the user gave is stated as given; a default one marks the footings preliminary, to be confirmed by a geotechnical investigation. Without recorded inputs the notes refer to the design instead of stating material values. Member dimensions and covers come from the design and detailing results or, failing those, from the model's sections, converted exactly from the model units (mm for metric drawings, in for US). A member whose cover is in neither is not drawn with an assumed one (`ValueError`).
+
 ### Automated Layout & Framing Integration
 When generating full-sheet drawings containing both structural framing (plans and elevations) and member detailing cuts:
 - **Unified Detailing Datum**: Computes a synchronized `detailing_baseline_y` below framing views with proper vertical headroom so tall elements (such as full-story columns with seismic confinement zones, lap splices, and upper/lower joint stubs) align cleanly with beam sections without vertical overlap or collision with framing views.

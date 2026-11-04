@@ -68,12 +68,22 @@ def _safe_getattr(obj: Any, name: str, default: Any = None) -> Any:
         return default
 
 
+def _cover_of(*objs: Any) -> float:
+    """The clear cover (in) the aci318 design used: the first ``cover`` found on ``objs``. The drawing shows the
+    design's cover, so none is assumed: ValueError when no object carries one."""
+    for obj in objs:
+        cover = _safe_getattr(obj, "cover", None)
+        if cover is not None:
+            return float(cover)
+    raise ValueError("The aci318 result carries no clear cover to draw (section.cover or the member's cover).")
+
+
 def _section_from(obj: Any) -> GeometrySection:
     """Build a :class:`GeometrySection` from an object with width/depth/cover."""
     return GeometrySection(
         width_in=float(_safe_getattr(obj, "width", 0.0) or 0.0),
         depth_in=float(_safe_getattr(obj, "depth", 0.0) or 0.0),
-        cover_in=float(_safe_getattr(obj, "cover", 1.5) or 1.5),
+        cover_in=_cover_of(obj),
     )
 
 
@@ -157,6 +167,11 @@ def from_beam_result(result: Any) -> BeamData:
         for row in (_safe_getattr(detailing, "schedule_rows", []) or ())
     ]
 
+    len_val = _safe_getattr(design, "length", None) or _safe_getattr(detailing, "length", None)
+    if len_val is None:
+        raise ValueError(f"Beam {str(_safe_getattr(design, 'name', 'B1'))!r}: missing length")
+    length_in = float(len_val)
+
     return BeamData(
         name=str(_safe_getattr(design, "name", _safe_getattr(detailing, "name", "B1")) or "B1"),
         section=section,
@@ -164,7 +179,7 @@ def from_beam_result(result: Any) -> BeamData:
         bottom_bars=tuple(bottom_bars),
         stirrups=stirrups,
         schedule=tuple(schedule),
-        length_in=float(_safe_getattr(design, "length", 240.0) or 240.0),
+        length_in=length_in,
         scale=SCALE_1_2_IN,
         unit=DrawingUnit.IN,
     )
@@ -195,39 +210,35 @@ def from_isolated_footing_result(result: Any) -> IsolatedFootingData:
         or "F1"
     )
 
-    raw_l = float(_safe_getattr(design, "length_in", None) or _safe_getattr(design, "length", 64.0) or 64.0)
+    raw_l_val = _safe_getattr(design, "length_in", None) or _safe_getattr(design, "length", None) or _safe_getattr(coordinator, "length", None)
+    if raw_l_val is None:
+        raise ValueError(f"Isolated footing {name!r}: missing length")
+    raw_l = float(raw_l_val)
     length_in = raw_l * 12.0 if raw_l <= 30.0 else raw_l
 
-    raw_w = float(_safe_getattr(design, "width_in", None) or _safe_getattr(design, "width", 64.0) or 64.0)
+    raw_w_val = _safe_getattr(design, "width_in", None) or _safe_getattr(design, "width", None) or _safe_getattr(coordinator, "width", None)
+    if raw_w_val is None:
+        raise ValueError(f"Isolated footing {name!r}: missing width")
+    raw_w = float(raw_w_val)
     width_in = raw_w * 12.0 if raw_w <= 30.0 else raw_w
 
-    thickness = float(
-        _safe_getattr(design, "mid_thickness", None)
-        or _safe_getattr(design, "thickness", None)
-        or _safe_getattr(coordinator, "thickness", 16.0)
-        or 16.0
-    )
-    edge_thickness = float(
-        _safe_getattr(design, "edge_thickness", None)
-        or thickness
-    )
+    raw_t_val = _safe_getattr(design, "mid_thickness", None) or _safe_getattr(design, "thickness", None) or _safe_getattr(coordinator, "thickness", None)
+    if raw_t_val is None:
+        raise ValueError(f"Isolated footing {name!r}: missing thickness")
+    thickness = float(raw_t_val)
+    edge_thickness = float(_safe_getattr(design, "edge_thickness", None) or thickness)
 
-    col_w = float(
-        _safe_getattr(design, "column_width", None)
-        or _safe_getattr(coordinator, "col_c1", None)
-        or 14.0
-    )
-    col_d = float(
-        _safe_getattr(design, "column_depth", None)
-        or _safe_getattr(coordinator, "col_c2", None)
-        or 14.0
-    )
+    col_w_val = _safe_getattr(design, "column_width", None) or _safe_getattr(coordinator, "col_c1", None)
+    if col_w_val is None:
+        raise ValueError(f"Isolated footing {name!r}: missing column_width")
+    col_w = float(col_w_val)
 
-    cover = float(
-        _safe_getattr(design, "cover", None)
-        or _safe_getattr(coordinator, "cover", 3.0)
-        or 3.0
-    )
+    col_d_val = _safe_getattr(design, "column_depth", None) or _safe_getattr(coordinator, "col_c2", None)
+    if col_d_val is None:
+        raise ValueError(f"Isolated footing {name!r}: missing column_depth")
+    col_d = float(col_d_val)
+
+    cover = _cover_of(design, coordinator)
 
     bar_dia = 0.5
     bar_spacing = 6.0
@@ -254,11 +265,9 @@ def from_isolated_footing_result(result: Any) -> IsolatedFootingData:
             Rebar(mark="CB1", size="#8", quantity=4, length_in=120.0, remarks="Column Starter Dowels"),
         )
 
-    col_stirrup = _stirrup_from(
-        _safe_getattr(detailing, "column_stirrup", None)
-        or _safe_getattr(design, "column_stirrup", None)
-        or Stirrup(size="#4", spacing_in=6.0, legs=2)
-    )
+    col_stirrup_raw = _safe_getattr(detailing, "column_stirrup", None) or _safe_getattr(design, "column_stirrup", None)
+    col_stirrup = _stirrup_from(col_stirrup_raw) if col_stirrup_raw is not None else None
+    ftg_bar_sz = str(_safe_getattr(first_bar, "bar_size", None)) if (detailing and hasattr(detailing, "bars") and detailing.bars) else _safe_getattr(design, "bar_size", None)
 
     ld = float(
         _safe_getattr(design, "Ld", None)
@@ -280,6 +289,7 @@ def from_isolated_footing_result(result: Any) -> IsolatedFootingData:
         cover_in=cover,
         bar_dia_in=bar_dia_in,
         bar_spacing_in=bar_spacing_in,
+        bar_size=ftg_bar_sz,
         column_bars=col_bars,
         column_stirrups=col_stirrup,
         development_length_in=ld,
@@ -313,17 +323,22 @@ def from_combined_footing_result(result: Any) -> CombinedFootingData:
         or "CF1"
     )
 
-    raw_l = float(_safe_getattr(design, "length_in", None) or _safe_getattr(design, "length", 140.0) or 140.0)
+    raw_l_val = _safe_getattr(design, "length_in", None) or _safe_getattr(design, "length", None)
+    if raw_l_val is None:
+        raise ValueError(f"Combined footing {name!r}: missing length")
+    raw_l = float(raw_l_val)
     total_length_in = raw_l * 12.0 if raw_l <= 30.0 else raw_l
 
-    raw_w = float(_safe_getattr(design, "width_in", None) or _safe_getattr(design, "width", 64.0) or 64.0)
+    raw_w_val = _safe_getattr(design, "width_in", None) or _safe_getattr(design, "width", None)
+    if raw_w_val is None:
+        raise ValueError(f"Combined footing {name!r}: missing width")
+    raw_w = float(raw_w_val)
     width_in = raw_w * 12.0 if raw_w <= 30.0 else raw_w
 
-    thickness_in = float(
-        _safe_getattr(design, "thickness", None)
-        or _safe_getattr(coordinator, "thickness", 24.0)
-        or 24.0
-    )
+    raw_t_val = _safe_getattr(design, "thickness", None) or _safe_getattr(coordinator, "thickness", None)
+    if raw_t_val is None:
+        raise ValueError(f"Combined footing {name!r}: missing thickness")
+    thickness_in = float(raw_t_val)
 
     raw_col_spacing = float(
         _safe_getattr(coordinator, "column_spacing_ft", None)
@@ -383,11 +398,7 @@ def from_combined_footing_result(result: Any) -> CombinedFootingData:
         or 14.0
     )
 
-    cover_in = float(
-        _safe_getattr(coordinator, "cover", None)
-        or _safe_getattr(design, "cover", 3.0)
-        or 3.0
-    )
+    cover_in = _cover_of(coordinator, design)
 
     bar_dia = 0.5
     bar_spacing = 6.0
@@ -515,12 +526,21 @@ def from_slab_result(result: Any) -> SlabData:
     detailing = result[1] if isinstance(result, tuple) else _safe_getattr(design, "detailing", None)
     top_bar_obj = _safe_getattr(detailing, "top_bar", None)
     bot_bar_obj = _safe_getattr(detailing, "bottom_bar", None)
+    len_val = _safe_getattr(design, "length", None)
+    if len_val is None:
+        raise ValueError(f"Slab {str(_safe_getattr(design, 'name', 'S1'))!r}: missing length")
+    width_val = _safe_getattr(design, "width", None)
+    if width_val is None:
+        raise ValueError(f"Slab {str(_safe_getattr(design, 'name', 'S1'))!r}: missing width")
+    thk_val = _safe_getattr(design, "thickness", None)
+    if thk_val is None:
+        raise ValueError(f"Slab {str(_safe_getattr(design, 'name', 'S1'))!r}: missing thickness")
     return SlabData(
         name=str(_safe_getattr(design, "name", "S1") or "S1"),
-        length_in=float(_safe_getattr(design, "length", 240.0) or 240.0),
-        width_in=float(_safe_getattr(design, "width", 120.0) or 120.0),
-        thickness_in=float(_safe_getattr(design, "thickness", 6.0) or 6.0),
-        cover_in=float(_safe_getattr(design, "cover", 0.75) or 0.75),
+        length_in=float(len_val),
+        width_in=float(width_val),
+        thickness_in=float(thk_val),
+        cover_in=_cover_of(design),
         top_bar=_rebar_from(top_bar_obj) if top_bar_obj is not None else None,
         bottom_bar=_rebar_from(bot_bar_obj) if bot_bar_obj is not None else None,
         scale=SCALE_1_8_IN,

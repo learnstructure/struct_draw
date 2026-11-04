@@ -29,6 +29,7 @@ overlap, fully respecting bounding boxes and dimensions.
 from __future__ import annotations
 
 import math
+import re
 import textwrap
 from typing import Any
 
@@ -44,6 +45,7 @@ from struct_draw.core.composite import (
 )
 from struct_draw.core.data import ColumnData, ColumnScheduleData, Rebar
 from struct_draw.core.primitives import draw_mtext, draw_rectangle
+from struct_draw.core.units import format_length
 
 
 # ---------------------------------------------------------------------------
@@ -53,19 +55,23 @@ from struct_draw.core.primitives import draw_mtext, draw_rectangle
 
 def _detect_metric(column: ColumnData) -> bool:
     """Determine whether column data is in metric units (mm) or imperial (inches)."""
+    if getattr(column, "unit", None) is not None:
+        from struct_draw.core.data import _resolve_unit_is_metric
+        return _resolve_unit_is_metric(column.unit, False)
     if getattr(column, "is_metric", None) is not None:
         return bool(column.is_metric)
-    w = column.section.width_in
-    d = column.section.depth_in
-    h = column.height_in
-    return w >= 100.0 or d >= 100.0 or h >= 1000.0
+    return False
 
 
-def _format_dim(val: float, is_metric: bool = False) -> str:
+def _format_dim(val: float, is_metric: bool = False, include_unit: bool = False) -> str:
     """Format dimension string for column drawings."""
-    if is_metric or val >= 300.0:
-        return f"{int(val)}" if val.is_integer() else f"{val:.1f}"
-    return f'{int(val)}"' if val.is_integer() else f'{val:.1f}"'
+    if is_metric:
+        if include_unit:
+            return f"{int(round(val))} mm" if abs(val - round(val)) < 1e-3 else f"{val:.1f} mm"
+        return f"{int(round(val))}" if abs(val - round(val)) < 1e-3 else f"{val:.1f}"
+    if abs(val - round(val)) < 1e-3:
+        return f'{int(round(val))}"'
+    return f'{val:.1f}"'
 
 
 _BAR_DIA_BY_DESIGNATOR: dict[str, float] = {
@@ -297,11 +303,10 @@ def section_view(
     lead_landing_len = dim_offset * 1.5
 
     # (a) Tie leader (Upper right area: pointing to top-right outer stirrup line)
-    spacing = column.stirrups.spacing_in if column.stirrups.spacing_in > 0 else (150.0 if is_metric else 5.0)
-    if is_metric:
-        sp_str = f"{int(spacing)}mm" if spacing.is_integer() else f"{spacing:.1f}mm"
-    else:
-        sp_str = f'{int(spacing)}"' if spacing.is_integer() else f'{spacing:.1f}"'
+    if column.stirrups.spacing_in <= 0:
+        raise ValueError(f"Column '{column.name}' is missing tie spacing.")
+    raw_spacing = column.stirrups.spacing_in
+    sp_str = format_length(raw_spacing, is_metric)
     stirrup_text = f"{tie_size} @ {sp_str} c/c"
 
     pt_tie = (sx0 + sw, sy0 + sh * 0.75)
@@ -370,6 +375,7 @@ def elevation_view(
     break_line_at: float | None = None,
     scale: Any | None = None,
     unit: Any | None = None,
+    show_notes: bool = True,
 ) -> dict[str, Any]:
     """Draw a professional column elevation detailing adhering strictly to ACI 318 seismic provisions:
 
@@ -420,25 +426,30 @@ def elevation_view(
     main_bar_dia = _bar_diameter(main_bar_size, is_metric=is_metric)
 
     # -----------------------------------------------------------------------
-    # 1. ACI 318 Seismic Parameters Calculation
+    # 1. ACI 318 Seismic Detailing Parameters (sourced from aci318 / DetailingResult)
     # -----------------------------------------------------------------------
-    lo_min_abs = 450.0 if is_metric else 18.0
-    lo = max(w, d, Lu / 6.0, lo_min_abs)
-    lo = min(lo, Lu * 0.35)
+    lo = column.lo
+    so = column.so
+    s_mid = column.s_mid
+    s_joint = column.s_joint
+    l_splice = column.l_splice
+    splice_class = getattr(column, "splice_class", "Class B") or "Class B"
 
-    # Seismic hoop spacing in Lo region: so <= min(w/4, d/4, 6*db, 6" / 150mm)
-    so_max = min(w / 4.0, d / 4.0, 6.0 * main_bar_dia, 100.0 if is_metric else 4.0)
-    so = max(50.0 if is_metric else 3.0, min(so_max, column.stirrups.spacing_in / 2.0 if column.stirrups.spacing_in > 0 else 4.0))
+    if column.stirrup_zones:
+        for st in column.stirrup_zones:
+            if getattr(st, "zone_type", None) == "Lo" and (lo is None or so is None):
+                lo = st.end_zone - st.start_zone
+                so = st.spacing_in
+            elif getattr(st, "zone_type", None) == "mid" and s_mid is None:
+                s_mid = st.spacing_in
+            elif getattr(st, "zone_type", None) == "joint" and s_joint is None:
+                s_joint = st.spacing_in
 
-    # Central zone tie spacing s
-    s_mid = max(so * 1.5, column.stirrups.spacing_in if column.stirrups.spacing_in > 0 else (200.0 if is_metric else 8.0))
-
-    # Joint hoop spacing
-    s_joint = max(so, 150.0 if is_metric else 6.0)
-
-    # Class B Lap splice length: Ld = max(48 * db, 30" / 750mm)
-    l_splice = max(48.0 * main_bar_dia, 750.0 if is_metric else 30.0)
-    l_splice = min(l_splice, (Lu - 2.0 * lo) * 0.85)
+    if lo is None or so is None or s_mid is None or s_joint is None or l_splice is None:
+        raise ValueError(
+            f"Column '{column.name}' is missing seismic detailing parameters "
+            f"(lo={lo}, so={so}, s_mid={s_mid}, s_joint={s_joint}, l_splice={l_splice}) from design."
+        )
 
     # Lap splice location: centered at mid-height (Lu/2) (ACI 318 §18.7.4.3)
     y_mid = oy + Lu / 2.0
@@ -654,49 +665,49 @@ def elevation_view(
     unit_str = "mm" if is_metric else '"'
 
     # (a) Joint hoops callout
-    so_joint_str = f"{s_joint:.0f}" if s_joint.is_integer() else f"{s_joint:.1f}"
+    so_joint_str = format_length(s_joint, is_metric)
     pt_a = (tie_x2, oy + Lu + h_beam * 0.5)
     elbow_a = (ox + w + ann_elbow_dx, pt_a[1])
     landing_a = (elbow_a[0] + landing_w, elbow_a[1])
     draw_leader(
         target,
         vertices=[pt_a, elbow_a, landing_a],
-        text=f"{tie_size} HOOPS @ {so_joint_str}{unit_str} C/C\n(THROUGH JOINT PER ACI 318 §18.8.3)",
+        text=f"{tie_size} HOOPS @ {so_joint_str} C/C\n(THROUGH JOINT PER ACI 318 §18.8.3)",
         arrow_size=arrow_size,
         text_height=text_height * 0.85,
         layer="LEADER",
     )
 
     # (b) Top Lo zone hoops callout
-    so_str = f"{so:.0f}" if so.is_integer() else f"{so:.1f}"
+    so_str = format_length(so, is_metric)
     pt_b = (tie_x2, oy + Lu - lo * 0.4)
     elbow_b = (ox + w + ann_elbow_dx, pt_b[1])
     landing_b = (elbow_b[0] + landing_w, elbow_b[1])
     draw_leader(
         target,
         vertices=[pt_b, elbow_b, landing_b],
-        text=f"Lo REGION: {tie_size} HOOPS @ {so_str}{unit_str} C/C\n(135° SEISMIC HOOKS, EXTEND >= 6db)",
+        text=f"Lo REGION: {tie_size} HOOPS @ {so_str} C/C\n(135° SEISMIC HOOKS, EXTEND >= 6db)",
         arrow_size=arrow_size,
         text_height=text_height * 0.85,
         layer="LEADER",
     )
 
     # (c) Lap splice zone callout (Mid-height)
-    l_splice_str = _format_dim(l_splice, is_metric)
+    l_splice_str = format_length(l_splice, is_metric)
     pt_c = (ox + x_right, y_mid)
     elbow_c = (ox + w + ann_elbow_dx, y_mid)
     landing_c = (elbow_c[0] + landing_w, elbow_c[1])
     draw_leader(
         target,
         vertices=[pt_c, elbow_c, landing_c],
-        text=f"LAP SPLICE: Ld = {l_splice_str}\n(CLASS B, MID-HEIGHT PER ACI 318 §18.7.4.3)",
+        text=f"LAP SPLICE: Ld = {l_splice_str}\n({splice_class.upper()}, MID-HEIGHT PER ACI 318 §18.7.4.3)",
         arrow_size=arrow_size,
         text_height=text_height * 0.85,
         layer="LEADER",
     )
 
     # (d) Central region ties callout
-    smid_str = f"{s_mid:.0f}" if s_mid.is_integer() else f"{s_mid:.1f}"
+    smid_str = format_length(s_mid, is_metric)
     y_mid_ties = oy + lo + (y_splice_bot - (oy + lo)) * 0.5
     pt_d = (tie_x2, y_mid_ties)
     elbow_d = (ox + w + ann_elbow_dx, y_mid_ties)
@@ -704,7 +715,7 @@ def elevation_view(
     draw_leader(
         target,
         vertices=[pt_d, elbow_d, landing_d],
-        text=f"CENTRAL REGION: {tie_size} TIES @ {smid_str}{unit_str} C/C\n(TYPICAL TRANSVERSE TIES)",
+        text=f"CENTRAL REGION: {tie_size} TIES @ {smid_str} C/C\n(TYPICAL TRANSVERSE TIES)",
         arrow_size=arrow_size,
         text_height=text_height * 0.85,
         layer="LEADER",
@@ -717,7 +728,7 @@ def elevation_view(
     draw_leader(
         target,
         vertices=[pt_e, elbow_e, landing_e],
-        text=f"Lo REGION: {tie_size} HOOPS @ {so_str}{unit_str} C/C\n(FIRST HOOP <= 2\" [50mm] FROM JOINT)",
+        text=f"Lo REGION: {tie_size} HOOPS @ {so_str} C/C\n(FIRST HOOP <= 2\" [50mm] FROM JOINT)",
         arrow_size=arrow_size,
         text_height=text_height * 0.85,
         layer="LEADER",
@@ -752,15 +763,16 @@ def elevation_view(
     # -----------------------------------------------------------------------
     notes_x = ox - dim_offset * 2.7
     notes_y = title_pos[1] - text_height * 4.0
+    cov_str = f"{cover:g}mm" if is_metric else f'{cover:g}"'
     notes = [
-        "ACI 318-19 SEISMIC COLUMN DETAILING NOTES:",
+        "ACI 318 SEISMIC COLUMN DETAILING NOTES:",
         "1. CONFINEMENT LENGTH Lo = MAX(h, b, H/6, 18\" [450mm]) AT COLUMN ENDS (ACI 318 §18.7.5.1).",
         "2. FIRST HOOP LOCATED AT <= 2.0\" (50mm) FROM JOINT FACE (ACI 318 §18.7.5.3).",
         "3. ALL HOOPS PROVIDED WITH 135° SEISMIC HOOKS WITH >= 6db EXTENSION INTO CORE.",
         "4. LAP SPLICES PERMITTED ONLY WITHIN CENTER HALF OF COLUMN CLEAR HEIGHT (ACI 318 §18.7.4.3).",
         "5. HOOPS CONTINUED THROUGH BEAM-COLUMN JOINT PER ACI 318 §18.8.3.",
-        "6. CLEAR COVER = 1.5\" (40mm) TO OUTER FACE OF TRANSVERSE HOOPS.",
-    ]
+        f"6. CLEAR COVER = {cov_str} TO OUTER FACE OF TRANSVERSE HOOPS.",
+    ] if show_notes else []
     for idx, note in enumerate(notes):
         n_layer = "TITLE" if idx == 0 else "TEXT"
         n_ht = text_height * 0.85 if idx == 0 else text_height * 0.7
@@ -773,7 +785,7 @@ def elevation_view(
     leader_text_width = max_callout_text_len * text_height * 0.75
     min_x = dim_x3 - dim_offset * 0.8
     max_x = landing_c[0] + leader_text_width + dim_offset
-    min_y = notes_y - len(notes) * text_height * 1.5
+    min_y = (notes_y - len(notes) * text_height * 1.5) if notes else (title_pos[1] - text_height * 3.0)
     max_y = oy + H_story + h_stub + dim_offset * 1.5
 
     refs: dict[str, Any] = {
@@ -822,27 +834,41 @@ def drawing(
     d = column.section.depth_in
     H = column.height_in
 
-    if layout == "stacked":
-        # Draw section above elevation with safe dynamic clearance
-        refs_elev = elevation_view(target, column, origin=(ox, oy), title=title or f"ELEVATION OF {column.name}", scale=scale, unit=unit)
-        elev_bbox = refs_elev["bounding_box"]
-        margin_y = max(d * 2.0, 40.0 if not is_metric else 1000.0)
-        sec_y = elev_bbox[3] + margin_y
-        refs_sec = section_view(target, column, origin=(ox, sec_y), title=f"SECTION @ {column.name}", scale=scale, unit=unit)
-        sec_bbox = refs_sec["bounding_box"]
+    has_elevation_detailing = (
+        column.lo is not None
+        and column.so is not None
+        and column.s_mid is not None
+        and column.s_joint is not None
+        and column.l_splice is not None
+    )
+
+    if has_elevation_detailing:
+        if layout == "stacked":
+            # Draw section above elevation with safe dynamic clearance
+            refs_elev = elevation_view(target, column, origin=(ox, oy), title=title or f"ELEVATION OF {column.name}", scale=scale, unit=unit)
+            elev_bbox = refs_elev["bounding_box"]
+            margin_y = max(d * 2.0, 40.0 if not is_metric else 1000.0)
+            sec_y = elev_bbox[3] + margin_y
+            refs_sec = section_view(target, column, origin=(ox, sec_y), title=f"SECTION @ {column.name}", scale=scale, unit=unit)
+            sec_bbox = refs_sec["bounding_box"]
+        else:
+            # Default: side_by_side
+            # 1. Draw Elevation on the left
+            refs_elev = elevation_view(target, column, origin=(ox, oy), title=title or f"ELEVATION OF {column.name}", scale=scale, unit=unit)
+            elev_bbox = refs_elev["bounding_box"]
+
+            # 2. Compute dynamic margin to the right of elevation's outer bounding box (clearing all leader text)
+            margin_x = max(w * 2.0, 45.0 if not is_metric else 1100.0)
+            sec_x = elev_bbox[2] + margin_x
+            sec_y = oy + max(0.0, (H - d) / 2.0)
+
+            # 3. Draw Section on the right
+            refs_sec = section_view(target, column, origin=(sec_x, sec_y), title=f"SECTION @ {column.name}", scale=scale, unit=unit)
+            sec_bbox = refs_sec["bounding_box"]
     else:
-        # Default: side_by_side
-        # 1. Draw Elevation on the left
-        refs_elev = elevation_view(target, column, origin=(ox, oy), title=title or f"ELEVATION OF {column.name}", scale=scale, unit=unit)
-        elev_bbox = refs_elev["bounding_box"]
-
-        # 2. Compute dynamic margin to the right of elevation's outer bounding box (clearing all leader text)
-        margin_x = max(w * 2.0, 45.0 if not is_metric else 1100.0)
-        sec_x = elev_bbox[2] + margin_x
-        sec_y = oy + max(0.0, (H - d) / 2.0)
-
-        # 3. Draw Section on the right
-        refs_sec = section_view(target, column, origin=(sec_x, sec_y), title=f"SECTION @ {column.name}", scale=scale, unit=unit)
+        refs_elev = None
+        elev_bbox = None
+        refs_sec = section_view(target, column, origin=(ox, oy), title=title or f"SECTION @ {column.name}", scale=scale, unit=unit)
         sec_bbox = refs_sec["bounding_box"]
 
     refs_sched = None
@@ -856,7 +882,7 @@ def drawing(
             unit="mm" if is_metric else "in",
             scale=scale,
         )
-        if layout == "stacked":
+        if layout == "stacked" and elev_bbox is not None:
             sched_y = elev_bbox[1] - (30.0 if not is_metric else 800.0)
             refs_sched = draw_schedule_table(target, sched_data, origin=(ox, sched_y), scale=scale, unit=unit)
         else:
@@ -864,10 +890,13 @@ def drawing(
             sched_y = sec_bbox[1] - (30.0 if not is_metric else 800.0)
             refs_sched = draw_schedule_table(target, sched_data, origin=(sched_x, sched_y), scale=scale, unit=unit)
 
-    min_x = min(elev_bbox[0], sec_bbox[0])
-    min_y = min(elev_bbox[1], sec_bbox[1])
-    max_x = max(elev_bbox[2], sec_bbox[2])
-    max_y = max(elev_bbox[3], sec_bbox[3])
+    if elev_bbox is not None:
+        min_x = min(elev_bbox[0], sec_bbox[0])
+        min_y = min(elev_bbox[1], sec_bbox[1])
+        max_x = max(elev_bbox[2], sec_bbox[2])
+        max_y = max(elev_bbox[3], sec_bbox[3])
+    else:
+        min_x, min_y, max_x, max_y = sec_bbox
 
     if refs_sched is not None:
         sb = refs_sched["bounding_box"]
@@ -886,41 +915,117 @@ def drawing(
     return result
 
 
-DEFAULT_GENERAL_NOTES: tuple[str, ...] = (
-    "1. DESIGN SPECIFICATIONS: ACI 318-19 (STRUCTURAL CONCRETE) & ASCE 7-22.",
-    "2. CONCRETE GRADES (28-DAY CYLINDER COMPRESSIVE STRENGTH f'c):",
-    "   - COLUMNS & BEAMS: f'c = 28 MPa (4000 psi), NORMAL WEIGHT CONCRETE",
-    "   - FOOTINGS & SLABS: f'c = 28 MPa (4000 psi)",
-    "   - PLAIN CONCRETE LEVELLING COURSE (PCC): M10 (10 MPa, 75mm THICK)",
-    "3. REINFORCING STEEL: ASTM A615 / A706 GRADE 60 (fy = 420 MPa / 60 ksi).",
-    "4. NOMINAL CLEAR CONCRETE COVER TO MAIN REINFORCEMENT:",
-    "   - FOOTINGS CAST AGAINST EARTH: 75 mm (3.0 in.)",
-    "   - COLUMNS & BEAMS (TO OUTER TIES/STIRRUPS): 40 mm (1.5 in.)",
-    "   - SLABS & STAIRCASES: 20 mm (0.75 in.)",
-    "5. DEVELOPMENT & SPLICES: MINIMUM CLASS B TENSION LAP SPLICE Ld = 48*db.",
-    "   COLUMN SPLICES PERMITTED ONLY IN MIDDLE HALF OF STORY CLEAR HEIGHT.",
-    "6. SEISMIC HOOKS: ALL TIES & STIRRUPS SHALL HAVE 135° HOOKS (>= 6*db EXTENSION).",
-    "7. FOUNDATIONS: NET ALLOWABLE SOIL BEARING CAPACITY = 200 kPa (4.0 ksf).",
-    "8. GENERAL: ALL DIMENSIONS IN MILLIMETERS UNLESS NOTED. DO NOT SCALE WRITTEN DRAWINGS.",
-)
+_PSI_PER_MPA = 145.0377
+_PCF_LIGHTWEIGHT = 135.0  # ACI 318-25 §19.2.4: concrete lighter than this is lightweight
 
-DEFAULT_GENERAL_NOTES_IMPERIAL: tuple[str, ...] = (
-    "1. DESIGN SPECIFICATIONS: ACI 318-19 (STRUCTURAL CONCRETE) & ASCE 7-22.",
-    "2. CONCRETE GRADES (28-DAY CYLINDER COMPRESSIVE STRENGTH f'c):",
-    "   - COLUMNS & BEAMS: f'c = 4000 psi (28 MPa), NORMAL WEIGHT CONCRETE",
-    "   - FOOTINGS & SLABS: f'c = 4000 psi (28 MPa)",
-    "   - PLAIN CONCRETE LEVELLING COURSE (PCC): 1500 psi (3 in. THICK)",
-    "3. REINFORCING STEEL: ASTM A615 / A706 GRADE 60 (fy = 60 ksi / 420 MPa).",
-    "4. NOMINAL CLEAR CONCRETE COVER TO MAIN REINFORCEMENT:",
-    "   - FOOTINGS CAST AGAINST EARTH: 3.0 in. (75 mm)",
-    "   - COLUMNS & BEAMS (TO OUTER TIES/STIRRUPS): 1.5 in. (40 mm)",
-    "   - SLABS & STAIRCASES: 0.75 in. (20 mm)",
-    "5. DEVELOPMENT & SPLICES: MINIMUM CLASS B TENSION LAP SPLICE Ld = 48*db.",
-    "   COLUMN SPLICES PERMITTED ONLY IN MIDDLE HALF OF STORY CLEAR HEIGHT.",
-    "6. SEISMIC HOOKS: ALL TIES & STIRRUPS SHALL HAVE 135° HOOKS (>= 6*db EXTENSION).",
-    "7. FOUNDATIONS: NET ALLOWABLE SOIL BEARING CAPACITY = 4.0 ksf (200 kPa).",
-    "8. GENERAL: ALL DIMENSIONS IN INCHES UNLESS NOTED. DO NOT SCALE WRITTEN DRAWINGS.",
-)
+
+def _stress(mpa: float, is_metric: bool) -> str:
+    psi = mpa * _PSI_PER_MPA
+    imperial = f"{psi:,.0f} psi" if psi < 20000.0 else f"{psi / 1000.0:.1f}".rstrip("0").rstrip(".") + " ksi"
+    return f"{mpa:.1f} MPa ({imperial})" if is_metric else f"{imperial} ({mpa:.1f} MPa)"
+
+
+def _length(mm: float, is_metric: bool) -> str:
+    return f"{mm:.0f} mm ({mm / 25.4:.1f} in.)" if is_metric else f"{mm / 25.4:.1f} in. ({mm:.0f} mm)"
+
+
+def _pressure(kpa: float, is_metric: bool) -> str:
+    ksf = kpa / 47.880259
+    return f"{kpa:.0f} kPa ({ksf:.1f} ksf)" if is_metric else f"{ksf:.1f} ksf ({kpa:.0f} kPa)"
+
+
+def _listed(values: list[str]) -> str:
+    return ", ".join(dict.fromkeys(values)) or "SEE DESIGN"
+
+
+def general_notes(
+    is_metric: bool = True, design_code: str | None = None, inputs: Any = None, units: Any = None
+) -> tuple[str, ...]:
+    """General notes for the detailing sheet.
+
+    ``inputs`` is the design's ``DesignInputs`` (``DesignResult.inputs``, values in the model ``units``): the notes
+    state its concrete strengths and unit weight, reinforcement grades, clear covers and allowable soil bearing
+    pressure, and say whether that pressure was given or assumed. Without ``inputs`` no material value is stated
+    (the drawing refers to the design). ``design_code`` (e.g. "ACI 318-25") overrides the inputs' code.
+    """
+    code_text = design_code or getattr(inputs, "design_code", None) or ""
+    edition = re.search(r"318\s*[-_ ]?\s*(\d{2})", code_text)
+    code = f"ACI 318-{edition.group(1)}" if edition else "ACI 318"
+    dims = "MILLIMETERS" if is_metric else "INCHES"
+    pcc = "10 MPa, 75 mm THICK" if is_metric else "1500 psi, 3 in. THICK"
+    slab_cover = "20 mm (0.75 in.)" if is_metric else "0.75 in. (20 mm)"
+
+    fc, fy, fyt, weight, frame_cover, ftg_cover, bearing = [], [], [], "NORMAL WEIGHT", "SEE DESIGN", "SEE DESIGN", None
+    bearing_given = False
+    if inputs is not None and units is not None:
+        from struct_core import conversion_factor
+
+        to_mpa = conversion_factor(units, "N, mm", "stress")
+        to_mm = conversion_factor(units, "N, mm", "length")
+        to_kpa = conversion_factor(units, "kN, m", "pressure")
+        to_pcf = conversion_factor(units, "lbf, ft", "weight_density")
+        concrete = [m for m in inputs.materials if getattr(m, "type", None) == "concrete"]
+        rebar = [m for m in inputs.materials if getattr(m, "type", None) == "rebar"]
+        mat_by_id = {getattr(m, "id", None): m for m in rebar}
+        long_mats = [mat_by_id[s.rebar_material_id] for s in inputs.sections if getattr(s, "rebar_material_id", None) in mat_by_id]
+        trans_mats = [mat_by_id[s.transverse_rebar_material_id] for s in inputs.sections if getattr(s, "transverse_rebar_material_id", None) in mat_by_id]
+        if not long_mats:
+            long_mats = rebar
+        fc = [_stress(m.fc * to_mpa, is_metric) for m in sorted(concrete, key=lambda m: m.fc)]
+        fy = [_stress(m.fy * to_mpa, is_metric) for m in sorted(long_mats, key=lambda m: m.fy)]
+        fyt = [_stress(m.fy * to_mpa, is_metric) for m in sorted(trans_mats, key=lambda m: m.fy)]
+        unit_weights = [m.unit_weight * to_pcf for m in concrete if m.unit_weight is not None]
+        if unit_weights and min(unit_weights) <= _PCF_LIGHTWEIGHT:
+            weight = "LIGHTWEIGHT"
+        covers = sorted({round(s.cover * to_mm, 1) for s in inputs.sections if getattr(s, "cover", None)})
+        frame_cover = _listed([_length(c, is_metric) for c in covers])
+        if inputs.footing_cover is not None:
+            ftg_cover = _length(inputs.footing_cover * to_mm, is_metric)
+        if inputs.allowable_bearing_pressure is not None:
+            bearing = _pressure(inputs.allowable_bearing_pressure * to_kpa, is_metric)
+            bearing_given = not any(d.name == "allowable_bearing_pressure" for d in inputs.defaults_applied)
+
+    fy_str = _listed(fy)
+    fyt_str = _listed(fyt) if fyt else fy_str
+    rebar_note = (
+        f"3. REINFORCING STEEL: ASTM A615 / A706, fy = {fy_str} (LONGITUDINAL), fyt = {fyt_str} (TRANSVERSE)."
+        if fyt and fyt_str != fy_str
+        else f"3. REINFORCING STEEL: ASTM A615 / A706, fy = {fy_str}."
+    )
+
+    if bearing is None:
+        foundation = ("7. FOUNDATIONS: NOT DESIGNED WITH THIS FRAME; SEE FOUNDATION DRAWINGS.",)
+    elif bearing_given:
+        foundation = (
+            "7. FOUNDATIONS: FOOTINGS ARE SIZED FOR A NET ALLOWABLE SOIL BEARING PRESSURE",
+            f"   OF {bearing} UNDER SERVICE LOADS (DESIGN BRIEF).",
+        )
+    else:
+        foundation = (
+            "7. FOUNDATIONS: PRELIMINARY. FOOTINGS ARE SIZED FOR AN ASSUMED NET ALLOWABLE SOIL BEARING",
+            f"   PRESSURE OF {bearing}, NOT GIVEN IN THE DESIGN BRIEF. CONFIRM BY GEOTECHNICAL",
+            "   INVESTIGATION AND REDESIGN THE FOOTINGS FOR THE CONFIRMED VALUE.",
+        )
+    return (
+        f"1. DESIGN SPECIFICATIONS: {code} (STRUCTURAL CONCRETE) & ASCE 7-22.",
+        "2. CONCRETE GRADES (28-DAY CYLINDER COMPRESSIVE STRENGTH f'c):",
+        f"   - COLUMNS, BEAMS & FOOTINGS: f'c = {_listed(fc)}, {weight} CONCRETE",
+        f"   - PLAIN CONCRETE LEVELLING COURSE (PCC): {pcc}",
+        rebar_note,
+        "4. NOMINAL CLEAR CONCRETE COVER TO MAIN REINFORCEMENT:",
+        f"   - FOOTINGS CAST AGAINST EARTH: {ftg_cover}",
+        f"   - COLUMNS & BEAMS (TO OUTER TIES/STIRRUPS): {frame_cover}",
+        f"   - SLABS & STAIRCASES: {slab_cover}",
+        "5. DEVELOPMENT & SPLICES: MINIMUM CLASS B TENSION LAP SPLICE Ld = 48*db.",
+        "   COLUMN SPLICES PERMITTED ONLY IN MIDDLE HALF OF STORY CLEAR HEIGHT.",
+        "6. SEISMIC HOOKS: ALL TIES & STIRRUPS SHALL HAVE 135° HOOKS (>= 6*db EXTENSION).",
+        *foundation,
+        f"8. GENERAL: ALL DIMENSIONS IN {dims} UNLESS NOTED. DO NOT SCALE WRITTEN DRAWINGS.",
+    )
+
+
+DEFAULT_GENERAL_NOTES: tuple[str, ...] = general_notes(True)
+DEFAULT_GENERAL_NOTES_IMPERIAL: tuple[str, ...] = general_notes(False)
 
 
 def column_schedule_view(
@@ -1061,7 +1166,11 @@ def column_schedule_view(
                 draw_rectangle(target, origin=(ox_sec, oy_sec), width=w, height=d, close=True, layer="COLUMN")
 
                 # Stirrup
-                cover = col_data.cover_in if getattr(col_data, "cover_in", None) else (40.0 if is_metric else 1.5)
+                cover = (
+                    getattr(getattr(col_data, "section", None), "cover_in", None)
+                    or getattr(col_data, "cover_in", None)
+                    or (40.0 if is_metric else 1.5)
+                )
                 tie_size = getattr(col_data.stirrups, "size", "T10" if is_metric else "#3")
                 tie_dia = _bar_diameter(tie_size, is_metric)
                 main_bar_size = col_data.longitudinal_bars[0].size if col_data.longitudinal_bars else ("T20" if is_metric else "#8")
@@ -1111,9 +1220,13 @@ def column_schedule_view(
                 )
 
                 # Text Callouts below cross section
-                spacing = col_data.stirrups.spacing_in if col_data.stirrups.spacing_in > 0 else (150.0 if is_metric else 6.0)
-                sp_str = _format_dim(spacing, is_metric)
-                unit_suf = "mm c/c" if is_metric else '" c/c'
+                if col_data.stirrups.spacing_in <= 0:
+                    raise ValueError(f"Column '{col_data.name}' is missing tie spacing.")
+                raw_sp = col_data.stirrups.spacing_in
+                sp_str = format_length(raw_sp, is_metric)
+                unit_suf = "c/c"
+
+
 
                 y_txt1 = y_bot + h_row * 0.22
                 y_txt2 = y_bot + h_row * 0.14
@@ -1143,9 +1256,17 @@ def column_schedule_view(
         typical_col = next(iter(schedule_data.columns.values()))
 
     refs_elev = None
-    if typical_col is not None:
+    has_elev_det = bool(
+        typical_col is not None
+        and typical_col.lo is not None
+        and typical_col.so is not None
+        and typical_col.s_mid is not None
+        and typical_col.s_joint is not None
+        and typical_col.l_splice is not None
+    )
+    if has_elev_det:
         col_title = f"TYPICAL GROUND FLOOR COLUMN ELEVATION ({typical_col.name})"
-        refs_elev = elevation_view(target, typical_col, origin=(elev_x, elev_y), title=col_title, scale=d_scale, unit=d_unit)
+        refs_elev = elevation_view(target, typical_col, origin=(elev_x, elev_y), title=col_title, scale=d_scale, unit=d_unit, show_notes=False)
         elev_bbox = refs_elev["bounding_box"]
     else:
         elev_bbox = (elev_x, elev_y, elev_x + (1500.0 if is_metric else 60.0), elev_y + table_h)
@@ -1223,5 +1344,5 @@ def column_schedule_view(
     }
 
 
-__all__ = ["section_view", "elevation_view", "drawing", "column_schedule_view", "DEFAULT_GENERAL_NOTES", "DEFAULT_GENERAL_NOTES_IMPERIAL"]
+__all__ = ["section_view", "elevation_view", "drawing", "column_schedule_view", "general_notes", "DEFAULT_GENERAL_NOTES", "DEFAULT_GENERAL_NOTES_IMPERIAL"]
 

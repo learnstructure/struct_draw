@@ -312,3 +312,13 @@ def default_scale_for_view(
             return SCALE_1_IN
         return SCALE_1_4_IN
 
+
+def format_length(val: float, is_metric: bool) -> str:
+    """Format length/spacing value with explicit units (e.g. '216 mm' or '8.5"')."""
+    if is_metric:
+        return f"{int(round(val))} mm"
+    else:
+        if abs(val - round(val)) < 1e-3:
+            return f'{int(round(val))}"'
+        return f'{val:.1f}"'
+

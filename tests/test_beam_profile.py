@@ -142,6 +142,23 @@ class TestBeamProfile(unittest.TestCase):
         self.assertIn("sections", refs)
         self.assertGreater(len(target.entities), 30)
 
+    def test_rebar_spec_formatting_units(self):
+        from struct_draw.elements.beam_profile import _format_rebar_spec
+        # Imperial: 8" stirrups -> '#3 @ 8" c/c', NO doubled ""
+        spec_imp = _format_rebar_spec("#3", 8.0, is_metric=False)
+        self.assertEqual(spec_imp, '#3 @ 8" c/c')
+        self.assertNotIn('""', spec_imp)
+
+        # Metric: 8.5" stirrup converted to mm (216 mm)
+        spec_met = _format_rebar_spec("10mm dia", 8.5, is_metric=True)
+        self.assertEqual(spec_met, '10mm dia @ 216 mm c/c')
+        self.assertNotIn('""', spec_met)
+        self.assertNotIn('8.5 mm', spec_met)
+
+        # Metric native mm: 150 mm
+        spec_met_mm = _format_rebar_spec("10mm dia", 150.0, is_metric=True)
+        self.assertEqual(spec_met_mm, '10mm dia @ 150 mm c/c')
+
 
 if __name__ == "__main__":
     unittest.main()

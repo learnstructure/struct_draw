@@ -34,13 +34,13 @@ def _make_2d_portal_model() -> StructuralModel:
     ]
     materials = [ElasticMaterial(id="CONC", E=2.5e7, nu=0.2, rho=2400.0)]
     sections = [
-        RectangularSection(id="COL", name="C400x400", b=0.4, h=0.4),
-        RectangularSection(id="BEAM", name="B300x500", b=0.3, h=0.5),
+        RectangularSection(id="COL", material_id="CONC", name="C400x400", b=0.4, h=0.4),
+        RectangularSection(id="BEAM", material_id="CONC", name="B300x500", b=0.3, h=0.5),
     ]
     elements = [
-        BeamElement(id="C1", name="C1", start_node=1, end_node=3, material_id="CONC", section_id="COL"),
-        BeamElement(id="C2", name="C2", start_node=2, end_node=4, material_id="CONC", section_id="COL"),
-        BeamElement(id="B1", name="B1", start_node=3, end_node=4, material_id="CONC", section_id="BEAM"),
+        BeamElement(id="C1", name="C1", start_node=1, end_node=3, section_id="COL"),
+        BeamElement(id="C2", name="C2", start_node=2, end_node=4, section_id="COL"),
+        BeamElement(id="B1", name="B1", start_node=3, end_node=4, section_id="BEAM"),
     ]
     supports = [Support.fixed(node_id=1), Support.fixed(node_id=2)]
     return StructuralModel(
@@ -74,8 +74,8 @@ def _make_3d_frame_model() -> StructuralModel:
 
     materials = [ElasticMaterial(id="CONC", E=2.5e7, nu=0.2, rho=2400.0)]
     sections = [
-        RectangularSection(id="COL", name="C450x450", b=0.45, h=0.45),
-        RectangularSection(id="BEAM", name="B300x600", b=0.3, h=0.6),
+        RectangularSection(id="COL", material_id="CONC", name="C450x450", b=0.45, h=0.45),
+        RectangularSection(id="BEAM", material_id="CONC", name="B300x600", b=0.3, h=0.6),
     ]
 
     elements = []
@@ -91,7 +91,6 @@ def _make_3d_frame_model() -> StructuralModel:
                         name=f"C{i+1}_{j+1}_{k+1}",
                         start_node=node_map[(i, j, k)],
                         end_node=node_map[(i, j, k + 1)],
-                        material_id="CONC",
                         section_id="COL",
                     )
                 )
@@ -107,7 +106,6 @@ def _make_3d_frame_model() -> StructuralModel:
                         name=f"BX{i+1}_{j+1}_L{k}",
                         start_node=node_map[(i, j, k)],
                         end_node=node_map[(i + 1, j, k)],
-                        material_id="CONC",
                         section_id="BEAM",
                     )
                 )
@@ -123,7 +121,6 @@ def _make_3d_frame_model() -> StructuralModel:
                         name=f"BY{i+1}_{j+1}_L{k}",
                         start_node=node_map[(i, j, k)],
                         end_node=node_map[(i, j + 1, k)],
-                        material_id="CONC",
                         section_id="BEAM",
                     )
                 )

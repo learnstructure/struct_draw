@@ -134,15 +134,15 @@ def test_draw_from_core_all_seven_member_types():
     """Test that struct_core_adapter dispatches all seven member types."""
     # 1. Beam
     e_beam = ElementDetailingResult(element_id=101, member_type="beam")
-    d_beam = SimpleNamespace(width=12.0, depth=20.0)
+    d_beam = SimpleNamespace(width=12.0, depth=20.0, cover=1.5)
 
     # 2. Beam Profile (Continuous Beam)
     e_prof = ElementDetailingResult(element_id=102, member_type="beam_profile")
-    d_prof = SimpleNamespace(width=14.0, depth=24.0, spans=[240.0, 300.0])
+    d_prof = SimpleNamespace(width=14.0, depth=24.0, spans=[240.0, 300.0], cover=1.5)
 
     # 3. Column
     e_col = ElementDetailingResult(element_id=103, member_type="column")
-    d_col = SimpleNamespace(width=18.0, depth=18.0)
+    d_col = SimpleNamespace(width=18.0, depth=18.0, cover=1.5)
 
     # 4. Footing
     e_ftg = ElementDetailingResult(element_id=104, member_type="footing")
@@ -222,4 +222,177 @@ def test_dynamic_geometry_from_model_and_design():
     assert beam_data.section.depth_in == 30.0
     assert beam_data.section.cover_in == 2.5
 
+
+def test_2d_model_framing_plan_single_grid_y():
+    """Verify that a 2D planar frame produces only a single Y-grid line (no empty Grid 2-2)."""
+    from struct_draw.adapters.struct_core_adapter import create_general_frame_data_from_model
+
+    class MockNode:
+        def __init__(self, id, x, y, z=0.0):
+            self.id = id
+            self.x = x
+            self.y = y
+            self.z = z
+
+    class MockElement:
+        def __init__(self, id, start_node, end_node, member_type="beam", name=None):
+            self.id = id
+            self.start_node = start_node
+            self.end_node = end_node
+            self.member_type = member_type
+            self.name = name
+
+    class MockModel:
+        def __init__(self):
+            self.nodes = [
+                MockNode(1, 0.0, 0.0),
+                MockNode(2, 0.0, 3.6),
+                MockNode(3, 6.0, 3.6),
+                MockNode(4, 6.0, 0.0),
+            ]
+            self.elements = [
+                MockElement(1, 1, 2, "column", "C1"),
+                MockElement(2, 2, 3, "beam", "B1"),
+                MockElement(3, 4, 3, "column", "C2"),
+            ]
+            self.story_elevations = [3.6]
+            self.sections = []
+
+    model = MockModel()
+    frame_data = create_general_frame_data_from_model(model, view_mode="plan")
+
+    assert len(frame_data.grid_y) == 1
+    assert frame_data.grid_y[0].label == "1"
+    assert frame_data.grid_y[0].coord == 0.0
+    assert len(frame_data.grid_x) == 2
+    assert [g.label for g in frame_data.grid_x] == ["A", "B"]
+
+
+def test_2d_multi_story_column_schedule_and_beam_runs():
+    """Verify that a 2-bay, 3-story 2D frame has multi-story column schedule and beam L-profile runs."""
+    from struct_draw.adapters.struct_core_adapter import _extract_continuous_beam_runs, draw_from_core
+
+    class MockNode:
+        def __init__(self, id, x, y, z=0.0):
+            self.id = id
+            self.x = x
+            self.y = y
+            self.z = z
+
+    class MockElement:
+        def __init__(self, id, start_node, end_node, member_type="beam", name=None):
+            self.id = id
+            self.start_node = start_node
+            self.end_node = end_node
+            self.member_type = member_type
+            self.name = name
+
+    # 2 bays (6m each, total 12m), 3 stories (3.5m each, total 10.5m)
+    nodes = []
+    x_coords = [0.0, 6.0, 12.0]
+    y_coords = [0.0, 3.5, 7.0, 10.5]
+    node_map = {}
+    nid = 1
+    for j, y in enumerate(y_coords):
+        for i, x in enumerate(x_coords):
+            nodes.append(MockNode(nid, x, y))
+            node_map[(i, j)] = nid
+            nid += 1
+
+    elements = []
+    # Columns (3 per story, 9 total)
+    for j in range(3):
+        for i in range(3):
+            cid = f"C_{i+1}_{j+1}"
+            elements.append(MockElement(cid, node_map[(i, j)], node_map[(i, j+1)], "column", f"C{i+1}"))
+
+    # Beams (2 per story, 6 total)
+    for j in range(1, 4):
+        for i in range(2):
+            bid = f"B_{i+1}_{j}"
+            elements.append(MockElement(bid, node_map[(i, j)], node_map[(i+1, j)], "beam", f"B{i+1}"))
+
+    class MockModel:
+        def __init__(self):
+            self.nodes = nodes
+            self.elements = elements
+            self.story_elevations = [3.5, 7.0, 10.5]
+            self.sections = []
+            self.units = "kN, m"
+
+    model = MockModel()
+
+    # 1. Continuous Beam Runs
+    elem_results = {e.id: ElementDetailingResult(element_id=e.id, member_type=e.member_type) for e in elements}
+    des_results = {e.id: SimpleNamespace(width=14.0, depth=22.0, cover=1.5) for e in elements}
+    runs = _extract_continuous_beam_runs(model, elem_results, des_results)
+
+    assert len(runs) == 3
+    for run in runs:
+        assert len(run.spans_in) == 2
+        assert "L-SECTION OF BEAM" in run.name
+        assert "LEVEL Y =" in run.level_text
+
+    # 2. Column Schedule Drawing
+    det_res = DetailingResult(element_results=elem_results)
+    des_res = SimpleNamespace(element_results=des_results)
+    res = draw_from_core(det_res, design_result=des_res, model_or_project=model)
+
+    assert "column_schedule" in res["data"]
+    sched = res["data"]["column_schedule"]
+    assert sched.stories == ("STORY 1", "STORY 2", "STORY 3")
+    assert sched.column_marks == ("C1", "C2", "C3")
+    assert len(sched.columns) == 9  # 3 stories x 3 column marks
+
+
+
+
+
+def test_member_dimensions_from_the_model_follow_its_units_and_no_cover_is_assumed():
+    """Model sections are in model units: a kip-ft section (1.25 ft, cover 2 in) is drawn as 15 in with 2 in cover.
+    A member without a cover in its design or section is not drawn with an assumed one."""
+    from struct_core import ConcreteMaterial, Metadata, Project, RectangularSection, StructuralModel, parse_units
+    from struct_core import BeamElement as CoreBeam, Node as CoreNode
+    from struct_draw.adapters.struct_core_adapter import _extract_section_properties
+
+    def project(cover):
+        model = StructuralModel(
+            nodes=[CoreNode(id=1, x=0.0, y=0.0), CoreNode(id=2, x=0.0, y=12.0)],
+            materials=[ConcreteMaterial(id="C", fc=576.0, E=518000.0)],
+            sections=[RectangularSection(id="COL", b=1.25, h=1.25, material_id="C", cover=cover)],
+            elements=[CoreBeam(id="C1", start_node=1, end_node=2, section_id="COL")])
+        return Project(model=model, metadata=Metadata(units=parse_units("kip, ft")))
+
+    p = project(2.0 / 12.0)
+    w, d, cover, length, metric = _extract_section_properties("C1", None, None, p.model, project=p)
+    assert (w, d, cover, length, metric) == pytest.approx((15.0, 15.0, 2.0, 144.0, False))
+    p = project(None)
+    with pytest.raises(ValueError, match="cover"):
+        _extract_section_properties("C1", None, None, p.model, project=p)
+
+
+def test_metric_model_with_aci318_detailing_units_does_not_squeeze_columns_or_beams():
+    """Verify that a metric model (kN, m) with ACI 318 detailing (which uses imperial units internally)
+    extracts proper millimeter section dimensions (e.g. 300 mm x 400 mm) rather than converted inch dimensions (11.8 in x 15.7 in)."""
+    from struct_core import ConcreteMaterial, Metadata, Project, RectangularSection, StructuralModel, parse_units, Units
+    from struct_core import BeamElement as CoreBeam, Node as CoreNode
+    from struct_draw.adapters.struct_core_adapter import _extract_section_properties, draw_from_core
+
+    model = StructuralModel(
+        nodes=[CoreNode(id=1, x=0.0, y=0.0, z=0.0), CoreNode(id=2, x=0.0, y=0.0, z=3.5)],
+        materials=[ConcreteMaterial(id="C30", fc=30.0e3, E=30.0e6)],
+        sections=[RectangularSection(id="COL_300x400", b=0.30, h=0.40, material_id="C30", cover=0.04)],
+        elements=[CoreBeam(id="C1", start_node=1, end_node=2, section_id="COL_300x400")],
+        units="kN, m",
+    )
+    p = Project(model=model, metadata=Metadata(units=Units(length="m", force="kN", time="s", mass="kg", temperature="C")))
+    det_res = SimpleNamespace(
+        units=Units(length="in", force="lbf", time="s", mass="slug", temperature="F"),
+        bar_system="US",
+        element_results={"C1": SimpleNamespace(bar_layout=None, bar_schedule=None, anchorage=None)},
+    )
+    p.detailing_results["ACI318_19"] = det_res
+    w, d, cover, length, metric = _extract_section_properties("C1", det_res.element_results["C1"], None, p.model, project=p)
+    assert metric is True
+    assert (w, d, cover, length) == pytest.approx((300.0, 400.0, 40.0, 3500.0))
 

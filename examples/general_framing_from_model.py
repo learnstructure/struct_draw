@@ -51,9 +51,9 @@ def build_sample_building_model() -> StructuralModel:
 
     materials = [ElasticMaterial(id="CONC", E=2.5e7, nu=0.2, rho=2400.0)]
     sections = [
-        RectangularSection(id="COL", name="C500x500", b=0.5, h=0.5),
-        RectangularSection(id="BEAM_X", name="B350x650", b=0.35, h=0.65),
-        RectangularSection(id="BEAM_Y", name="B300x550", b=0.3, h=0.55),
+        RectangularSection(id="COL", material_id="CONC", name="C500x500", b=0.5, h=0.5),
+        RectangularSection(id="BEAM_X", material_id="CONC", name="B350x650", b=0.35, h=0.65),
+        RectangularSection(id="BEAM_Y", material_id="CONC", name="B300x550", b=0.3, h=0.55),
     ]
 
     elements = []
@@ -69,7 +69,6 @@ def build_sample_building_model() -> StructuralModel:
                         name=f"C{i+1}_{j+1}",
                         start_node=node_map[(i, j, k)],
                         end_node=node_map[(i, j, k + 1)],
-                        material_id="CONC",
                         section_id="COL",
                     )
                 )
@@ -85,7 +84,6 @@ def build_sample_building_model() -> StructuralModel:
                         name=f"BX{i+1}_{j+1}",
                         start_node=node_map[(i, j, k)],
                         end_node=node_map[(i + 1, j, k)],
-                        material_id="CONC",
                         section_id="BEAM_X",
                     )
                 )
@@ -101,7 +99,6 @@ def build_sample_building_model() -> StructuralModel:
                         name=f"BY{i+1}_{j+1}",
                         start_node=node_map[(i, j, k)],
                         end_node=node_map[(i, j + 1, k)],
-                        material_id="CONC",
                         section_id="BEAM_Y",
                     )
                 )
@@ -177,14 +174,14 @@ def run():
     imp_model = StructuralModel(
         nodes=imp_nodes,
         elements=[
-            BeamElement(id="C1", name="C1", start_node=1, end_node=3, section_id="COL", material_id="STEEL"),
-            BeamElement(id="C2", name="C2", start_node=2, end_node=4, section_id="COL", material_id="STEEL"),
-            BeamElement(id="B1", name="B1", start_node=3, end_node=4, section_id="BEAM", material_id="STEEL"),
+            BeamElement(id="C1", name="C1", start_node=1, end_node=3, section_id="COL"),
+            BeamElement(id="C2", name="C2", start_node=2, end_node=4, section_id="COL"),
+            BeamElement(id="B1", name="B1", start_node=3, end_node=4, section_id="BEAM"),
         ],
         materials=[ElasticMaterial(id="STEEL", E=29000.0, nu=0.3, rho=0.284)],
         sections=[
-            RectangularSection(id="COL", name="W14x90", b=14.5, h=14.0),
-            RectangularSection(id="BEAM", name="W21x50", b=6.5, h=20.8),
+            RectangularSection(id="COL", material_id="STEEL", name="W14x90", b=14.5, h=14.0),
+            RectangularSection(id="BEAM", material_id="STEEL", name="W21x50", b=6.5, h=20.8),
         ],
         story_elevations=[0.0, 14.0],
     )

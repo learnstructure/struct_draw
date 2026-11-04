@@ -167,13 +167,13 @@ class TestDXFDrawingIntegration:
         ]
         materials = [ElasticMaterial(id="CONC", E=2.5e7, nu=0.2, rho=2400.0)]
         sections = [
-            RectangularSection(id="COL", name="C400x400", b=0.4, h=0.4),
-            RectangularSection(id="BEAM", name="B300x500", b=0.3, h=0.5),
+            RectangularSection(id="COL", material_id="CONC", name="C400x400", b=0.4, h=0.4),
+            RectangularSection(id="BEAM", material_id="CONC", name="B300x500", b=0.3, h=0.5),
         ]
         elements = [
-            BeamElement(id="C1", name="C1", start_node=1, end_node=3, material_id="CONC", section_id="COL"),
-            BeamElement(id="C2", name="C2", start_node=2, end_node=4, material_id="CONC", section_id="COL"),
-            BeamElement(id="B1", name="B1", start_node=3, end_node=4, material_id="CONC", section_id="BEAM"),
+            BeamElement(id="C1", name="C1", start_node=1, end_node=3, section_id="COL"),
+            BeamElement(id="C2", name="C2", start_node=2, end_node=4, section_id="COL"),
+            BeamElement(id="B1", name="B1", start_node=3, end_node=4, section_id="BEAM"),
         ]
         supports = [Support.fixed(node_id=1), Support.fixed(node_id=2)]
         model = StructuralModel(
@@ -220,13 +220,13 @@ class TestDXFDrawingIntegration:
         ]
         materials = [ElasticMaterial(id="STEEL", E=29000.0, nu=0.3, rho=0.284)]
         sections = [
-            RectangularSection(id="COL", name="W12x26", b=6.5, h=12.2),  # in inches
-            RectangularSection(id="BEAM", name="W16x31", b=5.5, h=15.9),
+            RectangularSection(id="COL", material_id="STEEL", name="W12x26", b=6.5, h=12.2),  # in inches
+            RectangularSection(id="BEAM", material_id="STEEL", name="W16x31", b=5.5, h=15.9),
         ]
         elements = [
-            BeamElement(id="C1", name="C1", start_node=1, end_node=3, material_id="STEEL", section_id="COL"),
-            BeamElement(id="C2", name="C2", start_node=2, end_node=4, material_id="STEEL", section_id="COL"),
-            BeamElement(id="B1", name="B1", start_node=3, end_node=4, material_id="STEEL", section_id="BEAM"),
+            BeamElement(id="C1", name="C1", start_node=1, end_node=3, section_id="COL"),
+            BeamElement(id="C2", name="C2", start_node=2, end_node=4, section_id="COL"),
+            BeamElement(id="B1", name="B1", start_node=3, end_node=4, section_id="BEAM"),
         ]
         supports = [Support.fixed(node_id=1), Support.fixed(node_id=2)]
         model = StructuralModel(

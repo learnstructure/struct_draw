@@ -21,6 +21,7 @@ from struct_draw.core.composite import (
     draw_break_line,
     draw_concrete_outline,
     draw_dimension,
+    draw_leader,
     draw_line,
     draw_polyline,
     draw_rebar_bar,
@@ -31,6 +32,7 @@ from struct_draw.core.composite import (
 )
 from struct_draw.core.data import BeamData, Rebar
 from struct_draw.core.primitives import draw_rectangle
+from struct_draw.core.units import format_length
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +122,26 @@ def section_view(
             corner_bar_diameter=corner_bar_dia,
             double_line=True,
             layer="STIRRUP",
+        )
+
+    # ----- Stirrup Callout Leader
+    if beam.stirrups.spacing_in > 0:
+        sp_text = format_length(beam.stirrups.spacing_in, is_m)
+        stirrup_text = f"{tie_size} @ {sp_text} c/c"
+        pt_tie = (ox + cover + sw, oy + cover + sh * 0.75)
+        lead_elbow_dx = dim_offset * 0.6
+        lead_landing_len = dim_offset * 1.5
+        elbow_tie = (ox + w + lead_elbow_dx, pt_tie[1])
+        landing_tie = (elbow_tie[0] + lead_landing_len, elbow_tie[1])
+        text_height = title_height * 0.85
+        arrow_size = text_height * 0.65
+        draw_leader(
+            target,
+            vertices=[pt_tie, elbow_tie, landing_tie],
+            text=stirrup_text,
+            arrow_size=arrow_size,
+            text_height=text_height,
+            layer="LEADER",
         )
 
     # ----- Top bars (row of dots).
@@ -240,6 +262,18 @@ def elevation_view(
     while x <= ox + L - spacing:
         draw_line(target, (x, oy + stirrup_inset), (x, oy + d - stirrup_inset), layer="STIRRUP")
         x += spacing
+
+    # Stirrup callout label
+    if beam.stirrups.spacing_in > 0:
+        sp_text = format_length(beam.stirrups.spacing_in, is_m)
+        draw_text(
+            target,
+            f"{tie_size} @ {sp_text} c/c",
+            position=(ox + L / 2.0, oy + d + dim_offset * 0.3),
+            height=text_height * 0.85,
+            align="middle_center",
+            layer="TEXT",
+        )
 
     # Length dimension.
     draw_dimension(

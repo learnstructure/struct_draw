@@ -105,6 +105,9 @@ class Stirrup:
     legs: int = 2
     width_in: float = 0.0
     height_in: float = 0.0
+    zone_type: str | None = None
+    start_zone: float = 0.0
+    end_zone: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -473,7 +476,8 @@ class IsolatedFootingData:
     bar_dia_in: float = 0.5
     bar_spacing_in: float = 6.0
     column_bars: Sequence[Rebar] = field(default_factory=tuple)
-    column_stirrups: Stirrup = field(default_factory=Stirrup)
+    column_stirrups: Optional[Stirrup] = None
+    bar_size: Optional[str] = None
     development_length_in: float = 24.0
     ledge_in: float = 4.0
     pcc_thickness_in: float = 3.0
@@ -520,6 +524,7 @@ class IsolatedFootingData:
         found_beam_h: float | None = None,
         column_bars: Sequence[Rebar] = (),
         column_stirrups: Stirrup | None = None,
+        bar_size: str | None = None,
         schedule: Sequence[ScheduleRow] = (),
         scale: Any = None,
         unit: Any = None,
@@ -570,7 +575,8 @@ class IsolatedFootingData:
             foundation_beam_width_in=_found_beam_w,
             foundation_beam_depth_in=_found_beam_h,
             column_bars=column_bars,
-            column_stirrups=column_stirrups or Stirrup(size="8mm dia", spacing_in=100.0),
+            column_stirrups=column_stirrups,
+            bar_size=bar_size,
             schedule=schedule,
             scale=scale,
             unit=unit or "mm",
@@ -604,6 +610,7 @@ class IsolatedFootingData:
         found_beam_h: float | None = None,
         column_bars: Sequence[Rebar] = (),
         column_stirrups: Stirrup | None = None,
+        bar_size: str | None = None,
         schedule: Sequence[ScheduleRow] = (),
         scale: Any = None,
         unit: Any = None,
@@ -654,7 +661,8 @@ class IsolatedFootingData:
             foundation_beam_width_in=_found_beam_w,
             foundation_beam_depth_in=_found_beam_h,
             column_bars=column_bars,
-            column_stirrups=column_stirrups or Stirrup(size="#3", spacing_in=6.0),
+            column_stirrups=column_stirrups,
+            bar_size=bar_size,
             schedule=schedule,
             scale=scale,
             unit=unit or "in",
@@ -736,7 +744,8 @@ class CombinedFootingData:
     foundation_beam_width_in: float = 0.0
     foundation_beam_depth_in: float = 0.0
     column_bars: Sequence[Rebar] = field(default_factory=tuple)
-    column_stirrups: Stirrup = field(default_factory=Stirrup)
+    column_stirrups: Optional[Stirrup] = None
+    bar_size: Optional[str] = None
     development_length_in: float = 24.0
     schedule: Sequence[ScheduleRow] = field(default_factory=tuple)
     scale: Any = None
@@ -964,15 +973,22 @@ class ColumnData:
     height_in: float = 120.0
     longitudinal_bars: Sequence[Rebar] = field(default_factory=tuple)
     stirrups: Stirrup = field(default_factory=Stirrup)
+    stirrup_zones: Sequence[Stirrup] = field(default_factory=tuple)
     schedule: Sequence[ScheduleRow] = field(default_factory=tuple)
     scale: Any = None
     unit: Any = None
     beam_depth_in: float | None = None
+    lo: float | None = None
+    so: float | None = None
+    s_mid: float | None = None
+    s_joint: float | None = None
+    l_splice: float | None = None
+    splice_class: str = "Class B"
 
     @property
     def is_metric(self) -> bool:
         """True if the column dimensions are specified in SI metric units (mm)."""
-        return _resolve_unit_is_metric(self.unit, self.section.width_in >= 100.0 or self.section.depth_in >= 100.0)
+        return _resolve_unit_is_metric(self.unit, False)
 
 
 @dataclass(frozen=True)

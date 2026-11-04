@@ -447,14 +447,15 @@ def plan_view(
             location=(x_min - dim_offset * 1.5, (y1 + y2) / 2.0),
             dimstyle=dimstyle,
         )
-    # Overall Y dimension
-    draw_dimension(
-        target,
-        (x_min, y_min),
-        (x_min, y_max),
-        location=(x_min - dim_offset * 2.5, (y_min + y_max) / 2.0),
-        dimstyle=dimstyle,
-    )
+    # Overall Y dimension (only if more than 1 grid line along Y)
+    if y_max > y_min + 1e-3:
+        draw_dimension(
+            target,
+            (x_min, y_min),
+            (x_min, y_max),
+            location=(x_min - dim_offset * 2.5, (y_min + y_max) / 2.0),
+            dimstyle=dimstyle,
+        )
 
     # 6. Title
     title_y = y_min - grid_ext_bot - bubble_radius * 2.0 - text_size * 2.0

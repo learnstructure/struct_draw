@@ -9,6 +9,7 @@ its own dedicated tests that gate ``ezdxf`` behind a
 from __future__ import annotations
 
 import math
+import pytest
 
 from struct_draw.core import (
     BeamData,
@@ -150,6 +151,11 @@ def test_column_drawing_dynamic_positioning() -> None:
         height_in=120.0,
         longitudinal_bars=(Rebar(mark="C1", size="#8", quantity=4),),
         stirrups=Stirrup(size="#3", spacing_in=6.0),
+        lo=24.0,
+        so=3.0,
+        s_mid=6.0,
+        s_joint=4.0,
+        l_splice=48.0,
     )
 
     t = Target()
@@ -220,6 +226,11 @@ def test_column_elevation_aci318_seismic_detailing() -> None:
         height_in=144.0,
         longitudinal_bars=(Rebar(mark="C1", size="#8", quantity=8),),
         stirrups=Stirrup(size="#4", spacing_in=8.0),
+        lo=24.0,
+        so=3.0,
+        s_mid=6.0,
+        s_joint=4.0,
+        l_splice=48.0,
     )
 
     t = Target()
@@ -242,6 +253,34 @@ def test_column_elevation_aci318_seismic_detailing() -> None:
     assert "REBAR" in layers_used
     assert "DIM_LINEAR" in layers_used
     assert "TITLE" in layers_used
+
+
+def test_column_elevation_missing_seismic_raises():
+    from struct_draw.core import ColumnData, GeometrySection, Rebar, Stirrup
+    from struct_draw.elements import column
+    col = ColumnData(
+        name="C_NO_SEISMIC",
+        section=GeometrySection(width_in=20.0, depth_in=20.0, cover_in=1.5),
+        height_in=144.0,
+        longitudinal_bars=(Rebar(mark="C1", size="#8", quantity=8),),
+        stirrups=Stirrup(size="#4", spacing_in=8.0),
+    )
+    class Target:
+        def __init__(self):
+            self.entities = []
+        def add_line(self, *a, **k): self.entities.append(('line', a, k))
+        def add_lwpolyline(self, *a, **k): self.entities.append(('poly', a, k))
+        def add_text(self, *a, **k): self.entities.append(('text', a, k))
+        def add_leader(self, *a, **k): self.entities.append(('leader', a, k))
+        def add_linear_dim(self, *a, **k):
+            class Dim:
+                def set_text(self, *a, **k): pass
+                def render(self): pass
+            self.entities.append(('dim', a, k))
+            return Dim()
+    t = Target()
+    with pytest.raises(ValueError, match="missing seismic detailing parameters"):
+        column.elevation_view(t, col, origin=(0.0, 0.0))
 
 
 def test_column_section_hooks_and_leaders() -> None:

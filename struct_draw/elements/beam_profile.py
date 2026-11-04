@@ -40,7 +40,7 @@ from struct_draw.core.composite import (
 )
 from struct_draw.core.data import BeamProfileData, Rebar
 from struct_draw.core.primitives import draw_circle, draw_mtext, draw_rectangle
-from struct_draw.core.units import DrawingScale, DrawingUnit
+from struct_draw.core.units import DrawingScale, DrawingUnit, format_length
 from struct_draw.style.annotation_config import AnnotationConfig, DEFAULT_ANNOTATION_CONFIG
 
 
@@ -66,10 +66,18 @@ def _format_rebar_spec(
     bar_size: str, spacing: float, is_metric: bool = False
 ) -> str:
     """Format stirrup specification string for dimension overrides."""
-    clean_size = _clean_text(bar_size) if bar_size else ("10mm dia" if is_metric else "#3")
-    sp_str = _format_dim(spacing, is_metric=is_metric, include_unit=is_metric)
-    unit_suffix = "c/c" if is_metric else '" c/c'
-    return f"{clean_size} @ {sp_str}{unit_suffix}"
+    if not bar_size:
+        raise ValueError("Missing stirrup bar size")
+    clean_size = _clean_text(bar_size)
+    if is_metric:
+        sp_val = round(spacing * 25.4) if (0 < spacing < 40.0) else spacing
+    else:
+        sp_val = (spacing / 25.4) if spacing >= 40.0 else spacing
+    sp_str = format_length(sp_val, is_metric)
+    return f"{clean_size} @ {sp_str} c/c"
+
+
+
 
 
 def profile_view(

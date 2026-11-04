@@ -61,8 +61,10 @@ def test_from_isolated_footing_result() -> None:
         column_depth=16.0,
         bar_dia=0.625,
         bar_spacing=6.0,
+        cover=3.0,
     )
     result = from_isolated_footing_result(design)
+    assert result.cover_in == 3.0  # the design's cover, not an assumed one
     assert isinstance(result, IsolatedFootingData)
     assert isinstance(result, FootingData)
     assert FootingData is IsolatedFootingData
@@ -135,8 +137,10 @@ def test_from_slab_result() -> None:
         length=300.0,
         width=180.0,
         thickness=8.0,
+        cover=1.0,
     )
     result = from_slab_result(design)
+    assert result.cover_in == 1.0
     assert isinstance(result, SlabData)
     assert result.name == "S1"
     assert result.length_in == 300.0
@@ -201,3 +205,10 @@ def test_from_combined_footing_result_tuple() -> None:
     assert res.top_bar_dia_in == 1.125
     assert res.bar_dia_in == 1.0
 
+
+
+def test_a_result_without_its_cover_is_not_drawn_with_an_assumed_one() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="cover"):
+        from_slab_result(SimpleNamespace(name="S1", length=300.0, width=180.0, thickness=8.0))

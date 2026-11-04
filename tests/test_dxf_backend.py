@@ -46,6 +46,11 @@ def _column() -> ColumnData:
         name="C1",
         section=GeometrySection(width_in=18.0, depth_in=18.0, cover_in=1.5),
         height_in=120.0,
+        lo=24.0,
+        so=3.0,
+        s_mid=6.0,
+        s_joint=4.0,
+        l_splice=48.0,
     )
 
 
@@ -54,6 +59,11 @@ def _column_with_schedule() -> ColumnData:
         name="C2",
         section=GeometrySection(width_in=18.0, depth_in=18.0, cover_in=1.5),
         height_in=120.0,
+        lo=24.0,
+        so=3.0,
+        s_mid=6.0,
+        s_joint=4.0,
+        l_splice=48.0,
         schedule=(
             ScheduleRow(mark="C2-1", size="#8", quantity=4, length_in=144.0, remarks="Straight"),
         ),

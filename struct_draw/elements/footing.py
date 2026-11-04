@@ -39,6 +39,7 @@ from struct_draw.core.composite import (
 )
 from struct_draw.core.data import FootingData, IsolatedFootingData, Rebar
 from struct_draw.core.primitives import draw_rectangle
+from struct_draw.core.units import format_length
 
 
 def _clean_text(txt: str) -> str:
@@ -48,28 +49,40 @@ def _clean_text(txt: str) -> str:
     return txt.replace("φ", "mm dia").replace("Φ", "mm dia").replace("ϕ", "mm dia")
 
 
-def _format_rebar_size(bar_dia_in: float, is_metric: bool = False) -> str:
+def _format_rebar_size(bar_dia_in: float, is_metric: bool = False, bar_size_str: str | None = None) -> str:
     """Format rebar size/diameter string."""
-    if is_metric or bar_dia_in >= 6.0:
-        val_str = f"{int(bar_dia_in)}" if bar_dia_in.is_integer() else f"{bar_dia_in:.1f}"
-        return f"{val_str}mm dia"
-    bar_map = {
-        0.375: "#3",
-        0.5: "#4",
-        0.625: "#5",
-        0.75: "#6",
-        0.875: "#7",
-        1.0: "#8",
-        1.128: "#9",
-        1.27: "#10",
-        1.41: "#11",
-    }
-    for val, size in bar_map.items():
-        if abs(bar_dia_in - val) < 0.05:
-            return size
-    if bar_dia_in.is_integer():
-        return f"{int(bar_dia_in)}mm dia"
-    return f'{bar_dia_in:.2f}"'
+    if bar_size_str:
+        clean = _clean_text(bar_size_str)
+        if is_metric and clean.startswith("#"):
+            try:
+                sz_num = int(clean[1:])
+                dia_mm = round(sz_num * 25.4 / 8.0)
+                return f"{clean} ({dia_mm} mm)"
+            except ValueError:
+                return clean
+        return clean
+    if is_metric:
+        dia_mm = round(bar_dia_in * 25.4) if bar_dia_in < 3.0 else round(bar_dia_in)
+        return f"{dia_mm}mm dia"
+    else:
+        dia_in = bar_dia_in / 25.4 if bar_dia_in >= 4.0 else bar_dia_in
+        bar_map = {
+            0.375: "#3",
+            0.5: "#4",
+            0.625: "#5",
+            0.75: "#6",
+            0.875: "#7",
+            1.0: "#8",
+            1.128: "#9",
+            1.27: "#10",
+            1.41: "#11",
+        }
+        for val, size in bar_map.items():
+            if abs(dia_in - val) < 0.05:
+                return size
+        if dia_in.is_integer():
+            return f'{int(dia_in)}"'
+        return f'{dia_in:.2f}"'
 
 
 def _format_dim(val: float, is_metric: bool = False, include_unit: bool = False) -> str:
@@ -164,7 +177,7 @@ def section_view(
         arr_sz = 50.0 if is_metric else 2.0
     dot_r = 7.0 if is_metric else max(bar_dia / 2.0, 0.25)
     hook_h = 80.0 if is_metric else 3.0
-    end_margin = 70.0 if is_metric else cover
+    end_margin = cover if cover > 0 else (75.0 if is_metric else 3.0)
 
     # 1. Foundation Slab + Sloped Edges + Pedestal Ledge
     foundation_pts = [
@@ -257,7 +270,7 @@ def section_view(
 
     # 7. Rebar Details
     # Bottom main rebar line with hooks
-    rebar_y = (50.0 if is_metric else cover + bar_dia / 2.0) + oy
+    rebar_y = (cover + bar_dia / 2.0) + oy
     p_rebar_left = -L / 2.0 + end_margin + ox
     p_rebar_right = L / 2.0 - end_margin + ox
 
@@ -319,14 +332,16 @@ def section_view(
         layer="Text",
     )
 
-    # Column stirrups
-    st_sp = footing.column_stirrups.spacing_in if footing.column_stirrups.spacing_in > 0 else (100.0 if is_metric else 6.0)
-    st_y0 = t_mid + (100.0 if is_metric else 4.0) + oy
-    n_st = int((col_y_top - st_y0) / st_sp)
-    for i in range(max(1, n_st)):
-        sy = st_y0 + i * st_sp
-        if sy < col_y_top:
-            draw_line(target, (col_left_bar_x, sy), (col_right_bar_x, sy), layer="Stirrup")
+    # Column stirrups (only draw if explicitly defined in footing data)
+    has_col_stirrups = bool(footing.column_stirrups and footing.column_stirrups.spacing_in > 0)
+    if has_col_stirrups:
+        st_sp = footing.column_stirrups.spacing_in
+        st_y0 = t_mid + (100.0 if is_metric else 4.0) + oy
+        n_st = int((col_y_top - st_y0) / st_sp)
+        for i in range(max(1, n_st)):
+            sy = st_y0 + i * st_sp
+            if sy < col_y_top:
+                draw_line(target, (col_left_bar_x, sy), (col_right_bar_x, sy), layer="Stirrup")
 
     # 8. Beam Cross-Section Blocks
     if pb_w > 0 and pb_h > 0:
@@ -350,7 +365,11 @@ def section_view(
         )
 
     # 9. Leaders / Callouts
-    text_bar = f"{_format_rebar_size(bar_dia, is_metric)} @ {_format_dim(spacing, is_metric, include_unit=is_metric)} c/c \nbothways"
+    cov_note = f"CLEAR COVER {footing.cover_in:g}mm" if is_metric else f'CLEAR COVER {footing.cover_in:g}"'
+    sp_str = format_length(spacing, is_metric)
+    bar_sz_name = getattr(footing, "bar_size", None)
+    rebar_label = _format_rebar_size(bar_dia, is_metric, bar_sz_name)
+    text_bar = f"{rebar_label} @ {sp_str} c/c \nbothways ({cov_note})"
     draw_leader(
         target,
         [
@@ -376,20 +395,22 @@ def section_view(
         layer="Text",
     )
 
-    st_dia_raw = footing.column_stirrups.size if footing.column_stirrups and footing.column_stirrups.size else ("8mm dia" if is_metric else "#3")
-    st_dia_str = _clean_text(st_dia_raw)
-    text_ring = f"{st_dia_str} @ {_format_dim(st_sp, is_metric, include_unit=is_metric)} c/c \ncolumn stirrups"
-    draw_leader(
-        target,
-        [
-            (col_left_bar_x + (50.0 if is_metric else 2.0), t_mid + (700.0 if is_metric else 28.0) + oy),
-            (cw / 2.0 + (100.0 if is_metric else 4.0) + ox, t_mid + (900.0 if is_metric else 36.0) + oy),
-            (cw / 2.0 + (250.0 if is_metric else 10.0) + ox, t_mid + (900.0 if is_metric else 36.0) + oy),
-        ],
-        text=text_ring,
-        text_height=st_sz,
-        layer="Text",
-    )
+    if has_col_stirrups:
+        st_dia_raw = footing.column_stirrups.size or "#3"
+        st_dia_str = _clean_text(st_dia_raw)
+        st_sp_str = format_length(st_sp, is_metric)
+        text_ring = f"{st_dia_str} @ {st_sp_str} c/c \ncolumn stirrups"
+        draw_leader(
+            target,
+            [
+                (col_left_bar_x + (50.0 if is_metric else 2.0), t_mid + (700.0 if is_metric else 28.0) + oy),
+                (cw / 2.0 + (100.0 if is_metric else 4.0) + ox, t_mid + (900.0 if is_metric else 36.0) + oy),
+                (cw / 2.0 + (250.0 if is_metric else 10.0) + ox, t_mid + (900.0 if is_metric else 36.0) + oy),
+            ],
+            text=text_ring,
+            text_height=st_sz,
+            layer="Text",
+        )
 
     if fb_w > 0 and fb_h > 0:
         text_fb = f"Foundation Beam \n{_format_dim(fb_w, is_metric)}x{_format_dim(fb_h, is_metric)}"
@@ -629,7 +650,7 @@ def plan_view(
         p_h1,
         p_h2,
         location=(pcx, foot_1[1] + 350.0 * s),
-        text_override=f"{_format_rebar_size(bar_dia, is_metric)} @ {_format_dim(spacing, is_metric, include_unit=is_metric)} c/c",
+        text_override=f"{_format_rebar_size(bar_dia, is_metric, getattr(footing, 'bar_size', None))} @ {format_length(spacing, is_metric)} c/c",
         layer="Dimension",
     )
 
@@ -648,7 +669,7 @@ def plan_view(
         p_v1,
         p_v2,
         location=(foot_1[0] + 350.0 * s, pcy),
-        text_override=f"{_format_rebar_size(bar_dia, is_metric)} @ {_format_dim(spacing, is_metric, include_unit=is_metric)} c/c",
+        text_override=f"{_format_rebar_size(bar_dia, is_metric, getattr(footing, 'bar_size', None))} @ {format_length(spacing, is_metric)} c/c",
         layer="Dimension",
     )
 
